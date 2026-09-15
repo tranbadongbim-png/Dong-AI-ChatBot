@@ -271,10 +271,7 @@ export default function App() {
       const history = messages.map((m) => ({
         role: m.role,
         text: m.content,
-        images: m.images?.map((img) => ({
-          data: img.data,
-          mimeType: img.mimeType,
-        })),
+        images: m.images,
       }));
 
       let accumulatedText = "";

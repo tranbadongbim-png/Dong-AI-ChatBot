@@ -42,17 +42,74 @@ app.get("/api/health", (req, res) => {
   });
 });
 
+interface AttachmentPayload {
+  data?: string;
+  mimeType?: string;
+  name?: string;
+  fileType?: "image" | "pdf" | "code" | "text";
+  textContent?: string;
+}
+
 interface ChatHistoryItem {
   role: "user" | "model";
   text: string;
-  images?: { data: string; mimeType: string }[];
+  images?: AttachmentPayload[];
+}
+
+// Helper to format an individual attachment (image, pdf, or code/text) into a Gemini Part
+function formatAttachmentPart(att: AttachmentPayload) {
+  // If it's a code or text file, inject directly as structured text for optimal reasoning
+  if (
+    att.fileType === "code" ||
+    att.fileType === "text" ||
+    att.textContent ||
+    att.name?.match(/\.(xaml|py|js|ts|tsx|jsx|cpp|c|h|hpp|cs|java|go|rs|php|rb|swift|kt|sql|sh|bash|json|csv|xml|yaml|yml|html|css|scss|md|txt|env|toml|ini|dockerfile)$/i)
+  ) {
+    let codeText = att.textContent;
+    if (!codeText && att.data) {
+      if (att.data.includes(",")) {
+        try {
+          codeText = Buffer.from(att.data.split(",")[1], "base64").toString("utf-8");
+        } catch {
+          codeText = att.data;
+        }
+      } else {
+        codeText = att.data;
+      }
+    }
+    const fileName = att.name || "code_file";
+    return {
+      text: `--- [TỆP ĐÍNH KÈM: ${fileName}] ---\n${codeText || ""}\n--- [HẾT TỆP: ${fileName}] ---`,
+    };
+  }
+
+  // Binary / Media files (PDF, Images)
+  const base64Data = att.data?.includes(",")
+    ? att.data.split(",")[1]
+    : att.data || "";
+
+  let mimeType = att.mimeType;
+  if (!mimeType) {
+    if (att.name?.toLowerCase().endsWith(".pdf")) {
+      mimeType = "application/pdf";
+    } else {
+      mimeType = "image/jpeg";
+    }
+  }
+
+  return {
+    inlineData: {
+      data: base64Data,
+      mimeType,
+    },
+  };
 }
 
 // Helper to format messages into Gemini SDK contents
 function formatContents(
   prompt: string,
   history: ChatHistoryItem[] = [],
-  images: { data: string; mimeType: string }[] = []
+  images: AttachmentPayload[] = []
 ) {
   const contents: any[] = [];
 
@@ -62,16 +119,7 @@ function formatContents(
       const parts: any[] = [];
       if (msg.images && msg.images.length > 0) {
         for (const img of msg.images) {
-          // Remove prefix if present (e.g. data:image/png;base64,...)
-          const base64Data = img.data.includes(",")
-            ? img.data.split(",")[1]
-            : img.data;
-          parts.push({
-            inlineData: {
-              data: base64Data,
-              mimeType: img.mimeType || "image/jpeg",
-            },
-          });
+          parts.push(formatAttachmentPart(img));
         }
       }
       if (msg.text) {
@@ -90,15 +138,7 @@ function formatContents(
   const currentParts: any[] = [];
   if (images && images.length > 0) {
     for (const img of images) {
-      const base64Data = img.data.includes(",")
-        ? img.data.split(",")[1]
-        : img.data;
-      currentParts.push({
-        inlineData: {
-          data: base64Data,
-          mimeType: img.mimeType || "image/jpeg",
-        },
-      });
+      currentParts.push(formatAttachmentPart(img));
     }
   }
   if (prompt) {

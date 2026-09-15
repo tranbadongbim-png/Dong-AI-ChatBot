@@ -1,10 +1,14 @@
 export interface ChatImage {
   id: string;
-  data: string; // base64 or data URL
+  data: string; // base64 or data URL or text
   mimeType: string;
   name: string;
   size?: number;
+  fileType?: "image" | "pdf" | "code" | "text";
+  textContent?: string;
 }
+
+export type ChatAttachment = ChatImage;
 
 export interface ChatMessage {
   id: string;

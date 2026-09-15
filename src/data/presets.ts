@@ -2,6 +2,26 @@ import { PresetPrompt } from "../types";
 
 export const PRESET_PROMPTS: PresetPrompt[] = [
   {
+    id: "high-thinking-code",
+    category: "Lập Trình & Phân Tích Code",
+    title: "Đọc & Tối ưu hóa code Python (.py)",
+    description: "Kéo thả file .py hoặc dán code để tìm bug, refactor và tối ưu thuật toán",
+    prompt: "Hãy đóng vai một chuyên gia Senior Python Developer. Tôi chuẩn bị gửi file .py hoặc đoạn code sau: Hãy phân tích kiến trúc, rà soát các lỗ hổng tiềm ẩn (edge cases), đánh giá độ phức tạp thuật toán O(n), và đề xuất phiên bản refactor tối ưu kèm giải thích chi tiết.",
+    enableThinking: true,
+    model: "gemini-3.6-flash",
+    iconName: "Code2",
+  },
+  {
+    id: "pdf-document-analysis",
+    category: "Đọc & Bóc Tách PDF",
+    title: "Phân tích tài liệu & Báo cáo PDF",
+    description: "Kéo thả file PDF trực tiếp để tóm tắt số liệu, trích xuất bảng biểu và hỏi đáp",
+    prompt: "Hãy đóng vai một chuyên gia phân tích tài liệu. Tôi đã đính kèm tài liệu PDF này: Hãy tóm tắt 5 điểm mấu chốt quan trọng nhất, trích xuất các bảng dữ liệu / số liệu chính và phân tích các khuyến nghị rút ra.",
+    enableThinking: false,
+    model: "gemini-3.6-flash",
+    iconName: "FileText",
+  },
+  {
     id: "high-thinking-math",
     category: "Suy Luận Sâu (Thinking)",
     title: "Giải toán logic đa bước",
@@ -10,26 +30,6 @@ export const PRESET_PROMPTS: PresetPrompt[] = [
     enableThinking: true,
     model: "gemini-3.6-flash",
     iconName: "BrainCircuit",
-  },
-  {
-    id: "high-thinking-code",
-    category: "Lập Trình & Thuật Toán",
-    title: "Phân tích thuật toán & Tối ưu",
-    description: "Kiểm tra độ phức tạp thời gian/không gian và refactor code hiệu năng cao",
-    prompt: "Hãy phân tích thuật toán tìm đường đi ngắn nhất (Dijkstra vs A*) trên đồ thị trọng số không âm, so sánh chi phí tính toán khi sử dụng Min-Heap vs Fibonacci Heap, và viết ví dụ TypeScript chi tiết kèm xử lý edge cases.",
-    enableThinking: true,
-    model: "gemini-3.6-flash",
-    iconName: "Code2",
-  },
-  {
-    id: "gemini-36-fast",
-    category: "Gemini 3.6 Flash",
-    title: "Tóm tắt & Trích xuất thông tin tốc độ cao",
-    description: "Tận dụng tốc độ phản hồi siêu tốc của Gemini 3.6 Flash để xử lý thông tin",
-    prompt: "Hãy lập một bản kế hoạch tổng thể 4 tuần cho việc triển khai dự án phần mềm theo phương pháp Agile Scrum, bao gồm các mốc Sprint, tiêu chí hoàn thành (DoD), và ma trận quản lý rủi ro.",
-    enableThinking: false,
-    model: "gemini-3.6-flash",
-    iconName: "Zap",
   },
   {
     id: "gemini-vision-analysis",

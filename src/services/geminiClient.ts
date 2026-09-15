@@ -3,7 +3,7 @@ import { ChatImage } from "../types";
 
 export interface StreamChatParams {
   prompt: string;
-  history?: { role: "user" | "model"; text: string; images?: { data: string; mimeType: string }[] }[];
+  history?: { role: "user" | "model"; text: string; images?: ChatImage[] }[];
   images?: ChatImage[];
   enableThinking?: boolean;
   model?: string;
@@ -13,9 +13,46 @@ export interface StreamChatParams {
   signal?: AbortSignal;
 }
 
+function formatSdkAttachment(att: ChatImage) {
+  // If it's a code or text file, inject directly as structured text for optimal reasoning
+  if (
+    att.fileType === "code" ||
+    att.fileType === "text" ||
+    att.textContent ||
+    att.name?.match(/\.(xaml|py|js|ts|tsx|jsx|cpp|c|h|hpp|cs|java|go|rs|php|rb|swift|kt|sql|sh|bash|json|csv|xml|yaml|yml|html|css|scss|md|txt|env|toml|ini|dockerfile)$/i)
+  ) {
+    let codeText = att.textContent;
+    if (!codeText && att.data) {
+      if (att.data.includes(",")) {
+        try {
+          codeText = atob(att.data.split(",")[1]);
+        } catch {
+          codeText = att.data;
+        }
+      } else {
+        codeText = att.data;
+      }
+    }
+    const fileName = att.name || "code_file";
+    return {
+      text: `--- [TỆP ĐÍNH KÈM: ${fileName}] ---\n${codeText || ""}\n--- [HẾT TỆP: ${fileName}] ---`,
+    };
+  }
+
+  // Binary/PDF/Image
+  const base64Data = att.data.includes(",") ? att.data.split(",")[1] : att.data;
+  const mimeType = att.mimeType || (att.name?.endsWith(".pdf") ? "application/pdf" : "image/jpeg");
+  return {
+    inlineData: {
+      data: base64Data,
+      mimeType,
+    },
+  };
+}
+
 function formatSdkContents(
   prompt: string,
-  history: { role: "user" | "model"; text: string; images?: { data: string; mimeType: string }[] }[] = [],
+  history: { role: "user" | "model"; text: string; images?: ChatImage[] }[] = [],
   images: ChatImage[] = []
 ) {
   const contents: any[] = [];
@@ -25,13 +62,7 @@ function formatSdkContents(
       const parts: any[] = [];
       if (msg.images && msg.images.length > 0) {
         for (const img of msg.images) {
-          const base64Data = img.data.includes(",") ? img.data.split(",")[1] : img.data;
-          parts.push({
-            inlineData: {
-              data: base64Data,
-              mimeType: img.mimeType || "image/jpeg",
-            },
-          });
+          parts.push(formatSdkAttachment(img));
         }
       }
       if (msg.text) {
@@ -49,13 +80,7 @@ function formatSdkContents(
   const currentParts: any[] = [];
   if (images && images.length > 0) {
     for (const img of images) {
-      const base64Data = img.data.includes(",") ? img.data.split(",")[1] : img.data;
-      currentParts.push({
-        inlineData: {
-          data: base64Data,
-          mimeType: img.mimeType || "image/jpeg",
-        },
-      });
+      currentParts.push(formatSdkAttachment(img));
     }
   }
   if (prompt) {
@@ -90,7 +115,7 @@ function parseClientError(err: any): string {
   if (rawMsg.includes("429") || rawMsg.includes("RESOURCE_EXHAUSTED") || rawMsg.includes("Quota exceeded")) {
     const retryMatch = rawMsg.match(/retry in ([0-9ms\.\s]+)/i) || rawMsg.match(/retryDelay"?:\s*"([0-9a-z]+)"/i);
     const retryInfo = retryMatch ? ` Vui lòng chờ khoảng ${retryMatch[1]} rồi bấm "Tạo lại".` : "";
-    return `API Key của bạn đã đạt giới hạn lượt gọi (Free Tier Limit 20 lượt/ngày trên dự án này).${retryInfo}\n\n👉 Giải pháp: Tạo thêm 1 API Key mới miễn phí tại Google AI Studio (aistudio.google.com) và dán vào Cài đặt (⚙️) là tiếp tục chat được ngay!`;
+    return `API Key của bạn đã đạt giới hạn lượt gọi (Free Tier Limit trên dự án này).${retryInfo}\n\n👉 Giải pháp: Tạo thêm 1 API Key mới miễn phí tại Google AI Studio (aistudio.google.com) và dán vào Cài đặt (⚙️) là tiếp tục chat được ngay!`;
   }
 
   return rawMsg;
@@ -218,6 +243,10 @@ export async function sendChatMessage(params: StreamChatParams): Promise<void> {
       images: params.images?.map((img) => ({
         data: img.data,
         mimeType: img.mimeType,
+        name: img.name,
+        fileType: img.fileType,
+        textContent: img.textContent,
+        size: img.size,
       })),
       enableThinking: params.enableThinking,
       model: params.model,

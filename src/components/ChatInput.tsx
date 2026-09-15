@@ -6,6 +6,10 @@ import {
   Brain,
   X,
   UploadCloud,
+  FileCode,
+  FileText,
+  File as GenericFileIcon,
+  Paperclip,
 } from "lucide-react";
 import { ChatImage } from "../types";
 
@@ -17,6 +21,37 @@ interface ChatInputProps {
   onToggleThinking: (enabled: boolean) => void;
 }
 
+// Helper to determine file category
+function getFileCategory(file: File): {
+  category: "image" | "pdf" | "code" | "text";
+  mimeType: string;
+} {
+  const name = file.name.toLowerCase();
+  if (file.type.startsWith("image/") || name.match(/\.(png|jpe?g|webp|gif|svg|bmp|ico)$/)) {
+    return { category: "image", mimeType: file.type || "image/jpeg" };
+  }
+  if (file.type === "application/pdf" || name.endsWith(".pdf")) {
+    return { category: "pdf", mimeType: "application/pdf" };
+  }
+  if (
+    name.match(/\.(xaml|py|js|ts|tsx|jsx|cpp|c|h|hpp|cs|java|go|rs|php|rb|swift|kt|sql|sh|bash|zsh|ps1|json|xml|yaml|yml|html|css|scss|md|markdown|env|toml|ini|dockerfile|ipynb|vue|svelte|dart|r|lua)$/) ||
+    file.type.startsWith("text/x-") ||
+    file.type === "application/json" ||
+    file.type === "application/javascript" ||
+    file.type === "application/xml"
+  ) {
+    return { category: "code", mimeType: file.type || "application/xml" };
+  }
+  return { category: "text", mimeType: file.type || "text/plain" };
+}
+
+function formatFileSize(bytes?: number): string {
+  if (!bytes) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export const ChatInput: React.FC<ChatInputProps> = ({
   onSend,
   onStop,
@@ -25,7 +60,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   onToggleThinking,
 }) => {
   const [text, setText] = useState("");
-  const [images, setImages] = useState<ChatImage[]>([]);
+  const [attachments, setAttachments] = useState<ChatImage[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -41,17 +76,46 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     }
   }, [text]);
 
-  const addImageFiles = useCallback((files: FileList | File[]) => {
+  const addFiles = useCallback((files: FileList | File[]) => {
     const fileArray = Array.from(files);
-    fileArray.forEach((file) => {
-      if (!file.type.startsWith("image/")) return;
 
+    fileArray.forEach((file) => {
+      const { category, mimeType } = getFileCategory(file);
+
+      // Handle Code & Text files (e.g. .py, .ts, .json, .txt)
+      if (category === "code" || category === "text") {
+        const textReader = new FileReader();
+        textReader.onload = () => {
+          const content = (textReader.result as string) || "";
+          setAttachments((prev) => {
+            // Deduplicate by name & size
+            if (prev.some((a) => a.name === file.name && a.size === file.size)) {
+              return prev;
+            }
+            return [
+              ...prev,
+              {
+                id: Math.random().toString(36).substring(2, 9),
+                data: content,
+                mimeType,
+                name: file.name,
+                size: file.size,
+                fileType: category,
+                textContent: content,
+              },
+            ];
+          });
+        };
+        textReader.readAsText(file, "utf-8");
+        return;
+      }
+
+      // Handle PDF and Images via readAsDataURL
       const reader = new FileReader();
       reader.onload = () => {
         const base64String = reader.result as string;
-        setImages((prev) => {
-          // Avoid adding identical base64 images
-          if (prev.some((img) => img.data === base64String)) {
+        setAttachments((prev) => {
+          if (prev.some((a) => a.name === file.name && a.size === file.size)) {
             return prev;
           }
           return [
@@ -59,9 +123,10 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             {
               id: Math.random().toString(36).substring(2, 9),
               data: base64String,
-              mimeType: file.type,
-              name: file.name || `Pasted_Image_${Date.now()}`,
+              mimeType,
+              name: file.name || `${category}_${Date.now()}`,
               size: file.size,
+              fileType: category,
             },
           ];
         });
@@ -70,18 +135,18 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     });
   }, []);
 
-  // Handle Clipboard Paste (Ctrl+V / Cmd+V / Screenshot) with strict deduplication
+  // Handle Clipboard Paste (Ctrl+V / Cmd+V / Screenshot / Copied files)
   const handlePaste = (e: React.ClipboardEvent) => {
     const clipboardData = e.clipboardData;
     if (!clipboardData) return;
 
     const targetFiles: File[] = [];
 
-    // 1. Prefer clipboardData.items (standard for screenshot pasting & clipboard images)
+    // Prefer items
     if (clipboardData.items && clipboardData.items.length > 0) {
       for (let i = 0; i < clipboardData.items.length; i++) {
         const item = clipboardData.items[i];
-        if (item.type.startsWith("image/")) {
+        if (item.kind === "file") {
           const file = item.getAsFile();
           if (file) {
             targetFiles.push(file);
@@ -89,18 +154,13 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         }
       }
     } else if (clipboardData.files && clipboardData.files.length > 0) {
-      // 2. Fallback to clipboardData.files only if items had no images
       for (let i = 0; i < clipboardData.files.length; i++) {
-        const file = clipboardData.files[i];
-        if (file.type.startsWith("image/")) {
-          targetFiles.push(file);
-        }
+        targetFiles.push(clipboardData.files[i]);
       }
     }
 
     if (targetFiles.length > 0) {
-      // Prevent default paste of image filename or binary into text area
-      addImageFiles(targetFiles);
+      addFiles(targetFiles);
     }
   };
 
@@ -123,17 +183,17 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     setIsDragging(false);
 
     if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      addImageFiles(e.dataTransfer.files);
+      addFiles(e.dataTransfer.files);
     }
   };
 
   const handleSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if ((!text.trim() && images.length === 0) || isLoading) return;
+    if ((!text.trim() && attachments.length === 0) || isLoading) return;
 
-    onSend(text.trim(), images);
+    onSend(text.trim(), attachments);
     setText("");
-    setImages([]);
+    setAttachments([]);
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
@@ -149,15 +209,20 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
-    addImageFiles(files);
+    addFiles(files);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
   };
 
-  const handleRemoveImage = (id: string) => {
-    setImages((prev) => prev.filter((img) => img.id !== id));
+  const handleRemoveAttachment = (id: string) => {
+    setAttachments((prev) => prev.filter((item) => item.id !== id));
   };
+
+  const isPythonFile = (name: string) => name.toLowerCase().endsWith(".py");
+  const isXamlFile = (name: string) => name.toLowerCase().endsWith(".xaml");
+  const isPdfFile = (name: string, type?: string) =>
+    name.toLowerCase().endsWith(".pdf") || type === "pdf";
 
   return (
     <div
@@ -171,40 +236,91 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         <div className="absolute inset-x-3 sm:inset-x-4 inset-y-0 z-30 flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-blue-500 bg-blue-50/95 backdrop-blur-xs transition-all">
           <UploadCloud className="h-10 w-10 text-blue-600 animate-bounce" />
           <p className="mt-2 text-sm font-bold text-blue-900 whitespace-nowrap">
-            Thả hình ảnh vào đây để tải lên
+            Thả tệp (.xaml, .py, PDF, Code, Tài liệu, Hình ảnh) vào đây
           </p>
           <p className="text-xs text-blue-600 whitespace-nowrap">
-            Hỗ trợ dán ảnh (Ctrl+V) hoặc kéo thả trực tiếp
+            Gemini 3.6 Flash hỗ trợ đọc và phân tích XAML (WPF/MAUI), Python, PDF và đa phương tiện
           </p>
         </div>
       )}
 
-      {/* Uploaded image previews */}
-      {images.length > 0 && (
-        <div className="mb-2 flex flex-wrap items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 p-2.5 shadow-xs">
-          {images.map((img) => (
-            <div
-              key={img.id}
-              className="group relative h-16 w-16 overflow-hidden rounded-lg border border-slate-300 bg-white shadow-xs shrink-0"
-            >
-              <img
-                src={img.data}
-                alt={img.name}
-                className="h-full w-full object-cover"
-                referrerPolicy="no-referrer"
-              />
-              <button
-                type="button"
-                onClick={() => handleRemoveImage(img.id)}
-                title="Xóa ảnh"
-                className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-slate-900/80 text-white transition-opacity hover:bg-red-600"
+      {/* Uploaded attachments preview bar */}
+      {attachments.length > 0 && (
+        <div className="mb-2 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2.5 shadow-xs">
+          {attachments.map((att) => {
+            const isPy = isPythonFile(att.name);
+            const isXaml = isXamlFile(att.name);
+            const isPdf = isPdfFile(att.name, att.fileType);
+            const isImg = att.fileType === "image" || att.mimeType?.startsWith("image/");
+
+            return (
+              <div
+                key={att.id}
+                className="group relative flex items-center gap-2 rounded-lg border border-slate-200 bg-white py-1.5 pl-2 pr-7 shadow-xs transition-all hover:border-slate-300"
               >
-                <X className="h-3 w-3" />
-              </button>
-            </div>
-          ))}
+                {/* Visual Icon / Thumbnail */}
+                {isImg ? (
+                  <div className="h-8 w-8 overflow-hidden rounded border border-slate-200 bg-slate-100 shrink-0">
+                    <img
+                      src={att.data}
+                      alt={att.name}
+                      className="h-full w-full object-cover"
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
+                ) : isPdf ? (
+                  <div className="flex h-8 w-8 items-center justify-center rounded bg-red-100 text-red-600 shrink-0">
+                    <FileText className="h-4 w-4" />
+                  </div>
+                ) : isXaml ? (
+                  <div className="flex h-8 w-8 items-center justify-center rounded bg-purple-100 text-purple-700 font-bold text-[10px] shrink-0">
+                    <FileCode className="h-4 w-4 text-purple-600" />
+                  </div>
+                ) : isPy ? (
+                  <div className="flex h-8 w-8 items-center justify-center rounded bg-amber-100 text-amber-700 font-bold text-[10px] shrink-0">
+                    <FileCode className="h-4 w-4 text-blue-600" />
+                  </div>
+                ) : (
+                  <div className="flex h-8 w-8 items-center justify-center rounded bg-slate-100 text-slate-700 shrink-0">
+                    <GenericFileIcon className="h-4 w-4" />
+                  </div>
+                )}
+
+                {/* File details */}
+                <div className="flex flex-col min-w-0 max-w-[140px] sm:max-w-[180px]">
+                  <span className="truncate text-xs font-semibold text-slate-800">
+                    {att.name}
+                  </span>
+                  <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
+                    <span className="font-medium text-slate-500 uppercase">
+                      {isXaml
+                        ? "XAML (.xaml)"
+                        : isPy
+                        ? "Python (.py)"
+                        : isPdf
+                        ? "Tài liệu PDF"
+                        : isImg
+                        ? "Hình ảnh"
+                        : "Mã nguồn"}
+                    </span>
+                    {att.size && <span>• {formatFileSize(att.size)}</span>}
+                  </div>
+                </div>
+
+                {/* Remove button */}
+                <button
+                  type="button"
+                  onClick={() => handleRemoveAttachment(att.id)}
+                  title="Xóa tệp đính kèm"
+                  className="absolute top-1.5 right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-slate-200 text-slate-600 transition-colors hover:bg-red-500 hover:text-white"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            );
+          })}
           <div className="text-[11px] text-slate-500 pl-1 whitespace-nowrap">
-            Đã đính kèm {images.length} hình ảnh (dán tiếp bằng Ctrl+V)
+            Đã đính kèm {attachments.length} tệp
           </div>
         </div>
       )}
@@ -220,8 +336,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           onPaste={handlePaste}
           placeholder={
             enableThinking
-              ? "Hỏi bài toán hoặc đặt câu hỏi suy luận sâu... Bạn có thể dán ảnh trực tiếp (Ctrl+V)"
-              : "Hỏi Gemini bất kỳ điều gì hoặc dán ảnh trực tiếp (Ctrl+V) để phân tích..."
+              ? "Hỏi bài toán, yêu cầu đọc tệp .xaml / .py / PDF hoặc suy luận sâu... (kéo thả hoặc dán tệp trực tiếp)"
+              : "Hỏi Gemini bất kỳ điều gì, hoặc kéo thả tệp .xaml, .py, PDF, hình ảnh, mã nguồn..."
           }
           rows={1}
           className="max-h-48 w-full resize-none bg-transparent px-4 pt-3.5 pb-12 text-sm text-slate-900 placeholder-slate-400 focus:outline-none"
@@ -230,27 +346,27 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         {/* Action bar inside textarea */}
         <div className="absolute bottom-2 inset-x-2 flex items-center justify-between">
           <div className="flex items-center gap-1.5 shrink-0">
-            {/* Hidden file input */}
+            {/* Hidden file input accepting images, pdfs, xaml, and code/text */}
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/png,image/jpeg,image/webp,image/gif"
+              accept=".xaml,.py,.pdf,.txt,.json,.csv,.md,.js,.ts,.tsx,.jsx,.cpp,.c,.java,.go,.rs,.sql,.sh,.yaml,.yml,.xml,image/png,image/jpeg,image/webp,image/gif,application/pdf"
               multiple
               onChange={handleFileChange}
               className="hidden"
               id="file-upload-input"
             />
 
-            {/* Attach Image button */}
+            {/* Attach File button */}
             <button
               type="button"
-              id="btn-attach-image"
+              id="btn-attach-files"
               onClick={() => fileInputRef.current?.click()}
-              title="Đính kèm hoặc Dán hình ảnh (Ctrl+V) để Gemini phân tích"
+              title="Đính kèm tệp (.xaml, .py, PDF, Code, Ảnh) hoặc Dán (Ctrl+V)"
               className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold text-slate-700 whitespace-nowrap shrink-0 transition-colors hover:bg-slate-100 active:scale-95"
             >
-              <ImageIcon className="h-4 w-4 text-blue-600 shrink-0" />
-              <span className="hidden sm:inline whitespace-nowrap">Tải / Dán ảnh</span>
+              <Paperclip className="h-4 w-4 text-blue-600 shrink-0" />
+              <span className="hidden sm:inline whitespace-nowrap">Đính kèm .xaml / .py / PDF / Ảnh</span>
             </button>
 
             {/* Quick High Thinking toggle */}
@@ -287,7 +403,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                 type="button"
                 id="btn-send-message"
                 onClick={() => handleSubmit()}
-                disabled={!text.trim() && images.length === 0}
+                disabled={!text.trim() && attachments.length === 0}
                 title="Gửi câu hỏi (Enter)"
                 className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-xs transition-all hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40 active:scale-95"
               >
@@ -300,7 +416,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
 
       <div className="mt-1.5 flex flex-wrap items-center justify-between gap-1 px-1 text-[11px] text-slate-400">
         <span className="whitespace-nowrap">
-          Hỗ trợ dán ảnh chụp màn hình <strong className="font-semibold text-slate-600">(Ctrl + V)</strong> hoặc kéo thả
+          Hỗ trợ kéo thả hoặc dán <strong className="font-semibold text-slate-600">.py, PDF, Code, Ảnh (Ctrl + V)</strong>
         </span>
         <span className="hidden sm:inline whitespace-nowrap">Shift + Enter để xuống dòng</span>
       </div>

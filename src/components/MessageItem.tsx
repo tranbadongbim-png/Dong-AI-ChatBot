@@ -14,6 +14,9 @@ import {
   User,
   RotateCcw,
   Zap,
+  FileText,
+  FileCode,
+  File as GenericFileIcon,
 } from "lucide-react";
 import { ChatMessage } from "../types";
 
@@ -151,22 +154,86 @@ export const MessageItem: React.FC<MessageItemProps> = ({
           </div>
         )}
 
-        {/* User attached images */}
+        {/* User attached files (Images, PDFs, Python, Code) */}
         {message.images && message.images.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-1">
-            {message.images.map((img) => (
-              <div
-                key={img.id}
-                className="relative overflow-hidden rounded-xl border border-slate-200 bg-slate-50 shadow-xs"
-              >
-                <img
-                  src={img.data}
-                  alt={img.name || "Attached"}
-                  className="max-h-48 max-w-xs object-cover rounded-lg"
-                  referrerPolicy="no-referrer"
-                />
-              </div>
-            ))}
+            {message.images.map((img) => {
+              const isImg = img.fileType === "image" || img.mimeType?.startsWith("image/");
+              const isPdf = img.fileType === "pdf" || img.mimeType === "application/pdf" || img.name?.toLowerCase().endsWith(".pdf");
+              const isPy = img.name?.toLowerCase().endsWith(".py");
+              const isXaml = img.name?.toLowerCase().endsWith(".xaml");
+
+              if (isImg) {
+                return (
+                  <div
+                    key={img.id}
+                    className="relative overflow-hidden rounded-xl border border-slate-200 bg-slate-50 shadow-xs"
+                  >
+                    <img
+                      src={img.data}
+                      alt={img.name || "Attached"}
+                      className="max-h-48 max-w-xs object-cover rounded-lg"
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
+                );
+              }
+
+              if (isPdf) {
+                return (
+                  <div
+                    key={img.id}
+                    className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50/80 px-3 py-2 text-xs text-red-950 shadow-xs max-w-xs"
+                  >
+                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-red-600 text-white shrink-0">
+                      <FileText className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-bold truncate text-red-900">{img.name}</p>
+                      <p className="text-[10px] text-red-600 font-semibold uppercase">
+                        Tài liệu PDF {img.size ? `• ${(img.size / 1024).toFixed(0)} KB` : ""}
+                      </p>
+                    </div>
+                  </div>
+                );
+              }
+
+              if (isXaml) {
+                return (
+                  <div
+                    key={img.id}
+                    className="flex items-center gap-2 rounded-xl border border-purple-200 bg-purple-50/80 px-3 py-2 text-xs text-purple-950 shadow-xs max-w-xs"
+                  >
+                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-purple-600 text-white shrink-0">
+                      <FileCode className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-bold truncate text-purple-900">{img.name}</p>
+                      <p className="text-[10px] text-purple-700 font-semibold uppercase">
+                        Giao diện XAML (.xaml) {img.size ? `• ${(img.size / 1024).toFixed(0)} KB` : ""}
+                      </p>
+                    </div>
+                  </div>
+                );
+              }
+
+              return (
+                <div
+                  key={img.id}
+                  className="flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50/80 px-3 py-2 text-xs text-blue-950 shadow-xs max-w-xs"
+                >
+                  <div className={`flex h-7 w-7 items-center justify-center rounded-lg text-white shrink-0 ${isPy ? "bg-amber-600" : "bg-blue-600"}`}>
+                    <FileCode className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold truncate text-slate-900">{img.name}</p>
+                    <p className="text-[10px] text-blue-700 font-semibold uppercase">
+                      {isPy ? "Mã nguồn Python (.py)" : "Mã nguồn / Văn bản"} {img.size ? `• ${(img.size / 1024).toFixed(0)} KB` : ""}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
 
