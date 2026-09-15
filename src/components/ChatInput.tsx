@@ -2,7 +2,6 @@ import React, { useRef, useState, useEffect, useCallback } from "react";
 import {
   Send,
   Square,
-  Image as ImageIcon,
   Brain,
   X,
   UploadCloud,
@@ -62,6 +61,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<ChatImage[]>([]);
   const [isDragging, setIsDragging] = useState(false);
+  const dragCounterRef = useRef(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -82,7 +82,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     fileArray.forEach((file) => {
       const { category, mimeType } = getFileCategory(file);
 
-      // Handle Code & Text files (e.g. .py, .ts, .json, .txt)
+      // Handle Code & Text files (e.g. .xaml, .py, .ts, .json, .txt)
       if (category === "code" || category === "text") {
         const textReader = new FileReader();
         textReader.onload = () => {
@@ -105,6 +105,9 @@ export const ChatInput: React.FC<ChatInputProps> = ({
               },
             ];
           });
+        };
+        textReader.onerror = () => {
+          console.error("Lỗi khi đọc tệp văn bản:", file.name);
         };
         textReader.readAsText(file, "utf-8");
         return;
@@ -131,9 +134,63 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           ];
         });
       };
+      reader.onerror = () => {
+        console.error("Lỗi khi đọc tệp đa phương tiện:", file.name);
+      };
       reader.readAsDataURL(file);
     });
   }, []);
+
+  // Window-level Drag and Drop Listeners with strict anti-flickering drag counter
+  useEffect(() => {
+    const handleWindowDragEnter = (e: DragEvent) => {
+      e.preventDefault();
+      if (e.dataTransfer?.types?.includes("Files")) {
+        dragCounterRef.current += 1;
+        if (dragCounterRef.current === 1) {
+          setIsDragging(true);
+        }
+      }
+    };
+
+    const handleWindowDragOver = (e: DragEvent) => {
+      e.preventDefault();
+      if (e.dataTransfer) {
+        e.dataTransfer.dropEffect = "copy";
+      }
+    };
+
+    const handleWindowDragLeave = (e: DragEvent) => {
+      e.preventDefault();
+      dragCounterRef.current -= 1;
+      if (dragCounterRef.current <= 0) {
+        dragCounterRef.current = 0;
+        setIsDragging(false);
+      }
+    };
+
+    const handleWindowDrop = (e: DragEvent) => {
+      e.preventDefault();
+      dragCounterRef.current = 0;
+      setIsDragging(false);
+
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        addFiles(e.dataTransfer.files);
+      }
+    };
+
+    window.addEventListener("dragenter", handleWindowDragEnter);
+    window.addEventListener("dragover", handleWindowDragOver);
+    window.addEventListener("dragleave", handleWindowDragLeave);
+    window.addEventListener("drop", handleWindowDrop);
+
+    return () => {
+      window.removeEventListener("dragenter", handleWindowDragEnter);
+      window.removeEventListener("dragover", handleWindowDragOver);
+      window.removeEventListener("dragleave", handleWindowDragLeave);
+      window.removeEventListener("drop", handleWindowDrop);
+    };
+  }, [addFiles]);
 
   // Handle Clipboard Paste (Ctrl+V / Cmd+V / Screenshot / Copied files)
   const handlePaste = (e: React.ClipboardEvent) => {
@@ -161,29 +218,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({
 
     if (targetFiles.length > 0) {
       addFiles(targetFiles);
-    }
-  };
-
-  // Drag and drop handlers
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-
-    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      addFiles(e.dataTransfer.files);
     }
   };
 
@@ -225,21 +259,18 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     name.toLowerCase().endsWith(".pdf") || type === "pdf";
 
   return (
-    <div
-      className="relative mx-auto w-full max-w-4xl px-3 sm:px-4 pb-3 sm:pb-4 bg-white shrink-0"
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
-    >
-      {/* Drag & Drop Visual Overlay */}
+    <div className="relative mx-auto w-full max-w-4xl px-3 sm:px-4 pb-3 sm:pb-4 bg-white shrink-0">
+      {/* Non-flickering full-area Drop Overlay with pointer-events-none */}
       {isDragging && (
-        <div className="absolute inset-x-3 sm:inset-x-4 inset-y-0 z-30 flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-blue-500 bg-blue-50/95 backdrop-blur-xs transition-all">
-          <UploadCloud className="h-10 w-10 text-blue-600 animate-bounce" />
-          <p className="mt-2 text-sm font-bold text-blue-900 whitespace-nowrap">
-            Thả tệp (.xaml, .py, PDF, Code, Tài liệu, Hình ảnh) vào đây
+        <div className="pointer-events-none select-none absolute inset-x-3 sm:inset-x-4 inset-y-0 z-50 flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-blue-500 bg-blue-50/95 shadow-xl backdrop-blur-xs transition-all animate-in fade-in duration-150">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-100 text-blue-600 shadow-xs mb-2">
+            <UploadCloud className="h-6 w-6" />
+          </div>
+          <p className="text-sm font-bold text-blue-900">
+            Thả tệp vào đây để Gemini 3.6 đọc & phân tích
           </p>
-          <p className="text-xs text-blue-600 whitespace-nowrap">
-            Gemini 3.6 Flash hỗ trợ đọc và phân tích XAML (WPF/MAUI), Python, PDF và đa phương tiện
+          <p className="text-xs text-blue-600 mt-0.5">
+            Hỗ trợ .xaml, .py, PDF, Code (.ts, .js, .json, .cs...), Hình ảnh
           </p>
         </div>
       )}
@@ -278,7 +309,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                   </div>
                 ) : isPy ? (
                   <div className="flex h-8 w-8 items-center justify-center rounded bg-amber-100 text-amber-700 font-bold text-[10px] shrink-0">
-                    <FileCode className="h-4 w-4 text-blue-600" />
+                    <FileCode className="h-4 w-4 text-amber-700" />
                   </div>
                 ) : (
                   <div className="flex h-8 w-8 items-center justify-center rounded bg-slate-100 text-slate-700 shrink-0">
@@ -312,7 +343,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                   type="button"
                   onClick={() => handleRemoveAttachment(att.id)}
                   title="Xóa tệp đính kèm"
-                  className="absolute top-1.5 right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-slate-200 text-slate-600 transition-colors hover:bg-red-500 hover:text-white"
+                  className="absolute top-1.5 right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-slate-200 text-slate-600 transition-colors hover:bg-red-500 hover:text-white cursor-pointer"
                 >
                   <X className="h-3 w-3" />
                 </button>
@@ -363,7 +394,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
               id="btn-attach-files"
               onClick={() => fileInputRef.current?.click()}
               title="Đính kèm tệp (.xaml, .py, PDF, Code, Ảnh) hoặc Dán (Ctrl+V)"
-              className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold text-slate-700 whitespace-nowrap shrink-0 transition-colors hover:bg-slate-100 active:scale-95"
+              className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold text-slate-700 whitespace-nowrap shrink-0 transition-colors hover:bg-slate-100 active:scale-95 cursor-pointer"
             >
               <Paperclip className="h-4 w-4 text-blue-600 shrink-0" />
               <span className="hidden sm:inline whitespace-nowrap">Đính kèm .xaml / .py / PDF / Ảnh</span>
@@ -375,7 +406,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
               id="btn-input-toggle-thinking"
               onClick={() => onToggleThinking(!enableThinking)}
               title="Bật/Tắt chế độ High Thinking (ThinkingLevel.HIGH)"
-              className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold whitespace-nowrap shrink-0 transition-all ${
+              className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold whitespace-nowrap shrink-0 transition-all cursor-pointer ${
                 enableThinking
                   ? "bg-amber-100 text-amber-900 border border-amber-300"
                   : "text-slate-600 hover:bg-slate-100"
@@ -393,7 +424,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                 id="btn-stop-stream"
                 onClick={onStop}
                 title="Dừng phản hồi"
-                className="flex h-8 items-center gap-1.5 rounded-xl bg-slate-900 px-3 text-xs font-semibold text-white shadow-xs whitespace-nowrap shrink-0 hover:bg-slate-800 active:scale-95"
+                className="flex h-8 items-center gap-1.5 rounded-xl bg-slate-900 px-3 text-xs font-semibold text-white shadow-xs whitespace-nowrap shrink-0 hover:bg-slate-800 active:scale-95 cursor-pointer"
               >
                 <Square className="h-3.5 w-3.5 fill-current shrink-0" />
                 <span className="whitespace-nowrap">Dừng</span>
@@ -405,7 +436,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                 onClick={() => handleSubmit()}
                 disabled={!text.trim() && attachments.length === 0}
                 title="Gửi câu hỏi (Enter)"
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-xs transition-all hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40 active:scale-95"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-xs transition-all hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40 active:scale-95 cursor-pointer"
               >
                 <Send className="h-4 w-4" />
               </button>
@@ -416,7 +447,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
 
       <div className="mt-1.5 flex flex-wrap items-center justify-between gap-1 px-1 text-[11px] text-slate-400">
         <span className="whitespace-nowrap">
-          Hỗ trợ kéo thả hoặc dán <strong className="font-semibold text-slate-600">.py, PDF, Code, Ảnh (Ctrl + V)</strong>
+          Hỗ trợ kéo thả hoặc dán <strong className="font-semibold text-slate-600">.xaml, .py, PDF, Code, Ảnh (Ctrl + V)</strong>
         </span>
         <span className="hidden sm:inline whitespace-nowrap">Shift + Enter để xuống dòng</span>
       </div>

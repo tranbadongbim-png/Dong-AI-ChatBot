@@ -83,8 +83,10 @@ function formatSdkContents(
       currentParts.push(formatSdkAttachment(img));
     }
   }
-  if (prompt) {
-    currentParts.push({ text: prompt });
+  if (prompt && prompt.trim()) {
+    currentParts.push({ text: prompt.trim() });
+  } else if (images && images.length > 0) {
+    currentParts.push({ text: "Hãy đọc, phân tích chi tiết và giải thích nội dung tệp đính kèm này." });
   }
 
   if (currentParts.length > 0) {
