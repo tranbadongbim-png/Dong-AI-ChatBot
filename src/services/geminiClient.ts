@@ -90,6 +90,8 @@ function formatSdkContents(
   images: ChatImage[] = []
 ) {
   const contents: any[] = [];
+  
+  console.log("Formatting contents, prompt:", prompt, "history length:", history?.length, "images length:", images?.length);
 
   if (history && history.length > 0) {
     for (const msg of history) {
@@ -129,6 +131,8 @@ function formatSdkContents(
       parts: currentParts,
     });
   }
+  
+  console.log("Formatted contents:", JSON.stringify(contents, null, 2));
 
   return contents;
 }
@@ -157,6 +161,65 @@ function parseClientError(err: any): string {
   return rawMsg;
 }
 
+// Client-side web search helper for Cloudflare / static browser hosting
+async function clientFetchLiveWebSearch(query: string): Promise<{ title: string; uri: string; snippet: string }[]> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4000);
+
+    // Try fetching via free CORS proxy to DuckDuckGo HTML
+    const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(searchUrl)}`;
+
+    const resp = await fetch(proxyUrl, { signal: controller.signal });
+    clearTimeout(timeout);
+
+    if (!resp.ok) return [];
+    const html = await resp.text();
+    const results: { title: string; uri: string; snippet: string }[] = [];
+
+    // Parse DuckDuckGo HTML results
+    const linkRegex = /<a\s+class="result__url"\s+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+    const snippetRegex = /<a\s+class="result__snippet"[^>]*>([\s\S]*?)<\/a>/gi;
+
+    const urls: { uri: string; title: string }[] = [];
+    let match: RegExpExecArray | null;
+
+    while ((match = linkRegex.exec(html)) !== null && urls.length < 6) {
+      let rawUri = match[1] || "";
+      if (rawUri.includes("uddg=")) {
+        try {
+          const matchUddg = rawUri.match(/uddg=([^&]+)/);
+          if (matchUddg) rawUri = decodeURIComponent(matchUddg[1]);
+        } catch {
+          // ignore
+        }
+      }
+      const title = match[2]?.replace(/<[^>]+>/g, "").trim() || "Trang web";
+      if (rawUri.startsWith("http")) {
+        urls.push({ uri: rawUri, title });
+      }
+    }
+
+    const snippets: string[] = [];
+    while ((match = snippetRegex.exec(html)) !== null && snippets.length < 6) {
+      snippets.push(match[1]?.replace(/<[^>]+>/g, "").trim() || "");
+    }
+
+    for (let i = 0; i < urls.length; i++) {
+      results.push({
+        title: urls[i].title,
+        uri: urls[i].uri,
+        snippet: snippets[i] || urls[i].title,
+      });
+    }
+
+    return results;
+  } catch {
+    return [];
+  }
+}
+
 // Client-side direct Google Gemini SDK (for Cloudflare Pages / Static Hosting)
 async function streamDirectGemini(params: StreamChatParams) {
   const {
@@ -177,96 +240,53 @@ async function streamDirectGemini(params: StreamChatParams) {
 
   const ai = new GoogleGenAI({ apiKey: customApiKey });
   const contents = formatSdkContents(prompt, history, images);
+  const targetModel = "gemini-3.6-flash"; // Rock-solid verified model
 
-  const configPayload: any = {
-    systemInstruction: getRealtimeSystemInstruction(systemInstruction),
+  let totalTextReceived = 0;
+  let totalThoughtReceived = 0;
+
+  const handleChunkData = (
+    textChunk: string,
+    thoughtChunk: string,
+    activeModel: string,
+    fallbackReason?: string,
+    groundingSources?: GroundingChunk[],
+    webSearchQueries?: string[]
+  ) => {
+    if (textChunk) totalTextReceived += textChunk.length;
+    if (thoughtChunk) totalThoughtReceived += thoughtChunk.length;
+
+    onChunk({
+      text: textChunk,
+      thought: thoughtChunk,
+      model: activeModel,
+      fallbackReason,
+      groundingSources,
+      webSearchQueries,
+    });
   };
 
+  // Attempt 1: Native Google Search Grounding tool (if search requested)
   if (enableSearch !== false) {
-    configPayload.tools = [{ googleSearch: {} }];
-  }
-
-  if (enableThinking) {
-    configPayload.thinkingConfig = {
-      thinkingLevel: ThinkingLevel.HIGH,
-    };
-  }
-
-  const targetModel = model || "gemini-3.6-flash";
-  let activeModelUsed = targetModel;
-
-  try {
-    const stream = await ai.models.generateContentStream({
-      model: targetModel,
-      contents,
-      config: configPayload,
-    });
-
-    for await (const chunk of stream) {
-      let textChunk = "";
-      let thoughtChunk = "";
-
-      const parts = chunk.candidates?.[0]?.content?.parts;
-      if (parts && Array.isArray(parts)) {
-        for (const part of parts) {
-          if ((part as any).thought) {
-            thoughtChunk += (part as any).text || "";
-          } else if (part.text) {
-            textChunk += part.text;
-          }
-        }
-      }
-
-      if (!textChunk && !thoughtChunk && chunk.text) {
-        textChunk = chunk.text;
-      }
-
-      const groundingMetadata = chunk.candidates?.[0]?.groundingMetadata;
-      let groundingSources: GroundingChunk[] | undefined;
-      let webSearchQueries: string[] | undefined;
-
-      if (groundingMetadata?.groundingChunks && Array.isArray(groundingMetadata.groundingChunks)) {
-        groundingSources = groundingMetadata.groundingChunks
-          .map((c: any) => ({
-            title: c.web?.title || c.title || "Trang web",
-            uri: c.web?.uri || c.uri || "",
-          }))
-          .filter((s: any) => s.uri);
-      }
-
-      if (groundingMetadata?.webSearchQueries && Array.isArray(groundingMetadata.webSearchQueries)) {
-        webSearchQueries = groundingMetadata.webSearchQueries;
-      }
-
-      onChunk({
-        text: textChunk,
-        thought: thoughtChunk,
-        model: activeModelUsed,
-        groundingSources: groundingSources && groundingSources.length > 0 ? groundingSources : undefined,
-        webSearchQueries: webSearchQueries && webSearchQueries.length > 0 ? webSearchQueries : undefined,
-      });
-    }
-  } catch (err: any) {
-    // Fallback smoothly to gemini-3.6-flash without failing search tool if requested model hits quota / unavailable
     try {
-      const fallbackConfig: any = {
+      const configWithTool: any = {
         systemInstruction: getRealtimeSystemInstruction(systemInstruction),
+        tools: [{ googleSearch: {} }],
       };
       if (enableThinking) {
-        fallbackConfig.thinkingConfig = {
-          thinkingLevel: ThinkingLevel.HIGH,
-        };
+        configWithTool.thinkingConfig = { thinkingLevel: ThinkingLevel.HIGH };
       }
 
-      const streamFallback = await ai.models.generateContentStream({
-        model: "gemini-3.6-flash",
+      const stream = await ai.models.generateContentStream({
+        model: targetModel,
         contents,
-        config: fallbackConfig,
+        config: configWithTool,
       });
 
-      for await (const chunk of streamFallback) {
+      for await (const chunk of stream) {
         let textChunk = "";
         let thoughtChunk = "";
+
         const parts = chunk.candidates?.[0]?.content?.parts;
         if (parts && Array.isArray(parts)) {
           for (const part of parts) {
@@ -281,16 +301,133 @@ async function streamDirectGemini(params: StreamChatParams) {
           textChunk = chunk.text;
         }
 
-        onChunk({
-          text: textChunk,
-          thought: thoughtChunk,
-          model: "gemini-3.6-flash",
-          fallbackReason: "Đã tự động kết nối qua kênh Gemini 3.6 Flash để đảm bảo thông suốt.",
-        });
+        const groundingMetadata = chunk.candidates?.[0]?.groundingMetadata;
+        let groundingSources: GroundingChunk[] | undefined;
+        let webSearchQueries: string[] | undefined;
+
+        if (groundingMetadata?.groundingChunks && Array.isArray(groundingMetadata.groundingChunks)) {
+          groundingSources = groundingMetadata.groundingChunks
+            .map((c: any) => ({
+              title: c.web?.title || c.title || "Trang web",
+              uri: c.web?.uri || c.uri || "",
+            }))
+            .filter((s: any) => s.uri);
+        }
+
+        if (groundingMetadata?.webSearchQueries && Array.isArray(groundingMetadata.webSearchQueries)) {
+          webSearchQueries = groundingMetadata.webSearchQueries;
+        }
+
+        handleChunkData(textChunk, thoughtChunk, targetModel, undefined, groundingSources, webSearchQueries);
       }
-    } catch (finalErr: any) {
-      throw new Error(parseClientError(finalErr));
+
+      if (totalTextReceived > 0) {
+        return;
+      }
+    } catch (searchToolErr: any) {
+      console.warn("Client native googleSearch failed (quota/rate limit), falling back to live web crawler:", searchToolErr?.message);
     }
+  }
+
+  // Attempt 2: Live Web Search Fallback + Gemini without search tool (to bypass 429 quota)
+  try {
+    let searchContext = "";
+    let webSources: GroundingChunk[] = [];
+
+    if (enableSearch !== false && prompt) {
+      const liveResults = await clientFetchLiveWebSearch(prompt);
+      if (liveResults.length > 0) {
+        webSources = liveResults.map((r) => ({ title: r.title, uri: r.uri }));
+        searchContext = `\n\n[DỮ LIỆU TÌM KIẾM WEB THỜI GIAN THỰC TỪ INTERNET]:\n` +
+          liveResults.map((r, i) => `${i + 1}. ${r.title}\nURL: ${r.uri}\nNội dung: ${r.snippet}`).join("\n\n") +
+          `\n\nHãy tổng hợp thông tin mới nhất từ dữ liệu web trên để trả lời đầy đủ, chính xác cho người dùng.`;
+      }
+    }
+
+    const fallbackInstruction = getRealtimeSystemInstruction(
+      (systemInstruction ? systemInstruction + "\n" : "") + searchContext
+    );
+
+    const fallbackConfig: any = {
+      systemInstruction: fallbackInstruction,
+    };
+    if (enableThinking) {
+      fallbackConfig.thinkingConfig = { thinkingLevel: ThinkingLevel.HIGH };
+    }
+
+    const streamFallback = await ai.models.generateContentStream({
+      model: targetModel,
+      contents,
+      config: fallbackConfig,
+    });
+
+    for await (const chunk of streamFallback) {
+      let textChunk = "";
+      let thoughtChunk = "";
+
+      const parts = chunk.candidates?.[0]?.content?.parts;
+      if (parts && Array.isArray(parts)) {
+        for (const part of parts) {
+          if ((part as any).thought) {
+            thoughtChunk += (part as any).text || "";
+          } else if (part.text) {
+            textChunk += part.text;
+          }
+        }
+      }
+      if (!textChunk && !thoughtChunk && chunk.text) {
+        textChunk = chunk.text;
+      }
+
+      handleChunkData(
+        textChunk,
+        thoughtChunk,
+        targetModel,
+        webSources.length > 0 ? "Đã tra cứu dữ liệu web thời gian thực trực tuyến." : undefined,
+        webSources.length > 0 ? webSources : undefined,
+        webSources.length > 0 ? [prompt] : undefined
+      );
+    }
+
+    if (totalTextReceived > 0) {
+      return;
+    }
+  } catch (streamErr: any) {
+    console.warn("Client streaming failed, attempting non-streaming generateContent fallback:", streamErr?.message);
+  }
+
+  // Attempt 3: Non-streaming generateContent as ultimate guarantee
+  try {
+    const directResp = await ai.models.generateContent({
+      model: targetModel,
+      contents,
+      config: {
+        systemInstruction: getRealtimeSystemInstruction(systemInstruction),
+      },
+    });
+
+    let finalText = "";
+    const parts = directResp.candidates?.[0]?.content?.parts;
+    if (parts && Array.isArray(parts)) {
+      for (const p of parts) {
+        if (p.text) finalText += p.text;
+      }
+    }
+    if (!finalText && directResp.text) {
+      finalText = directResp.text;
+    }
+
+    if (finalText) {
+      handleChunkData(finalText, "", targetModel, "Đã phản hồi qua kênh Gemini 3.6 Flash dự phòng.");
+      return;
+    }
+  } catch (finalErr: any) {
+    console.error("All direct Gemini client attempts failed:", finalErr);
+    throw new Error(parseClientError(finalErr));
+  }
+
+  if (totalTextReceived === 0) {
+    throw new Error("Không nhận được nội dung từ Gemini API. Vui lòng kiểm tra lại API Key hoặc quota của tài khoản Google AI Studio.");
   }
 }
 

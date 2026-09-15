@@ -38,7 +38,7 @@ app.get("/api/health", (req, res) => {
   res.json({
     status: "ok",
     hasApiKey: hasKey,
-    defaultModel: "gemini-3.6-flash",
+    defaultModel: "gemini-3.8-flash",
   });
 });
 
@@ -291,7 +291,7 @@ app.post("/api/gemini/stream", async (req, res) => {
     images = [],
     enableThinking = false,
     enableSearch = true,
-    model = "gemini-3.6-flash",
+    model = "gemini-3.8-flash",
     systemInstruction,
   } = req.body;
 
@@ -309,7 +309,7 @@ app.post("/api/gemini/stream", async (req, res) => {
   const ai = getAIClient();
   const contents = formatContents(prompt, history, images);
 
-  let requestedModel = model || "gemini-3.6-flash";
+  let requestedModel = model || "gemini-3.8-flash";
   let targetModel = requestedModel;
   let fallbackReason = "";
 
@@ -367,11 +367,11 @@ app.post("/api/gemini/stream", async (req, res) => {
           noToolConfig.thinkingConfig = { thinkingLevel: ThinkingLevel.HIGH };
         }
 
-        activeModelUsed = "gemini-3.6-flash";
+        activeModelUsed = "gemini-3.8-flash";
         fallbackReason = "Đã sử dụng công cụ Live Web Search để tra cứu dữ liệu mới nhất trực tuyến.";
 
         stream = await ai.models.generateContentStream({
-          model: "gemini-3.6-flash",
+          model: "gemini-3.8-flash",
           contents,
           config: noToolConfig,
         });
@@ -385,9 +385,9 @@ app.post("/api/gemini/stream", async (req, res) => {
           if (enableThinking) {
             simpleConfig.thinkingConfig = { thinkingLevel: ThinkingLevel.HIGH };
           }
-          activeModelUsed = "gemini-3.6-flash";
+          activeModelUsed = "gemini-3.8-flash";
           stream = await ai.models.generateContentStream({
-            model: "gemini-3.6-flash",
+            model: "gemini-3.8-flash",
             contents,
             config: simpleConfig,
           });
@@ -402,7 +402,7 @@ app.post("/api/gemini/stream", async (req, res) => {
     } else {
       // Non-search fallback
       try {
-        activeModelUsed = "gemini-3.6-flash";
+        activeModelUsed = "gemini-3.8-flash";
         const fallbackConfig: any = {
           systemInstruction: getRealtimeSystemInstruction(systemInstruction),
         };
@@ -410,7 +410,7 @@ app.post("/api/gemini/stream", async (req, res) => {
           fallbackConfig.thinkingConfig = { thinkingLevel: ThinkingLevel.HIGH };
         }
         stream = await ai.models.generateContentStream({
-          model: "gemini-3.6-flash",
+          model: "gemini-3.8-flash",
           contents,
           config: fallbackConfig,
         });
@@ -496,7 +496,7 @@ app.post("/api/gemini/stream", async (req, res) => {
             `\nHãy sử dụng các kết quả tìm kiếm thời gian thực này để trả lời đầy đủ, chi tiết câu hỏi của người dùng.`;
         }
         const nonStreamResp = await ai.models.generateContent({
-          model: "gemini-3.6-flash",
+          model: "gemini-3.8-flash",
           contents,
           config: {
             systemInstruction: getRealtimeSystemInstruction(systemInstruction) + searchContext,
@@ -506,7 +506,7 @@ app.post("/api/gemini/stream", async (req, res) => {
         const fallbackText = nonStreamResp.text || "Đã hoàn tất tìm kiếm và tổng hợp thông tin.";
         res.write(`data: ${JSON.stringify({
           text: fallbackText,
-          model: "gemini-3.6-flash",
+          model: "gemini-3.8-flash",
           groundingSources: searchResults.map((r) => ({ title: r.title, uri: r.uri })),
           webSearchQueries: [prompt.slice(0, 100)],
         })}\n\n`);
@@ -523,7 +523,7 @@ app.post("/api/gemini/stream", async (req, res) => {
     // If stream failed during execution and we got no text yet, recover immediately!
     if (!totalTextReceived.trim()) {
       try {
-        console.log("Recovering stream with live web search + gemini-3.6-flash...");
+        console.log("Recovering stream with live web search + gemini-3.8-flash...");
         const searchResults = await fetchLiveWebSearch(prompt);
         let searchContext = "";
         if (searchResults.length > 0) {
@@ -533,7 +533,7 @@ app.post("/api/gemini/stream", async (req, res) => {
         }
 
         const recoveryResp = await ai.models.generateContent({
-          model: "gemini-3.6-flash",
+          model: "gemini-3.8-flash",
           contents,
           config: {
             systemInstruction: getRealtimeSystemInstruction(systemInstruction) + searchContext,
@@ -542,7 +542,7 @@ app.post("/api/gemini/stream", async (req, res) => {
 
         res.write(`data: ${JSON.stringify({
           text: recoveryResp.text || "Đã xử lý thông tin yêu cầu của bạn.",
-          model: "gemini-3.6-flash",
+          model: "gemini-3.8-flash",
           fallbackReason: "Đã chuyển qua kênh tra cứu trực tiếp để đảm bảo phản hồi thông suốt.",
           groundingSources: searchResults.map((r) => ({ title: r.title, uri: r.uri })),
           webSearchQueries: [prompt.slice(0, 100)],
@@ -570,7 +570,7 @@ app.post("/api/gemini/generate", async (req, res) => {
     images = [],
     enableThinking = false,
     enableSearch = true,
-    model = "gemini-3.6-flash",
+    model = "gemini-3.8-flash",
     systemInstruction,
   } = req.body;
 
@@ -582,7 +582,7 @@ app.post("/api/gemini/generate", async (req, res) => {
   try {
     const ai = getAIClient();
 
-    let targetModel = model || "gemini-3.6-flash";
+    let targetModel = model || "gemini-3.8-flash";
     const configPayload: any = {
       systemInstruction: getRealtimeSystemInstruction(systemInstruction),
     };
@@ -634,10 +634,10 @@ app.post("/api/gemini/generate", async (req, res) => {
             fallbackConfig.thinkingConfig = { thinkingLevel: ThinkingLevel.HIGH };
           }
 
-          activeModel = "gemini-3.6-flash";
+          activeModel = "gemini-3.8-flash";
           fallbackNotice = "Đã tra cứu dữ liệu web thời gian thực trực tuyến.";
           response = await ai.models.generateContent({
-            model: "gemini-3.6-flash",
+            model: "gemini-3.8-flash",
             contents,
             config: fallbackConfig,
           });
@@ -649,9 +649,9 @@ app.post("/api/gemini/generate", async (req, res) => {
           if (enableThinking) {
             simpleConfig.thinkingConfig = { thinkingLevel: ThinkingLevel.HIGH };
           }
-          activeModel = "gemini-3.6-flash";
+          activeModel = "gemini-3.8-flash";
           response = await ai.models.generateContent({
-            model: "gemini-3.6-flash",
+            model: "gemini-3.8-flash",
             contents,
             config: simpleConfig,
           });
@@ -663,9 +663,9 @@ app.post("/api/gemini/generate", async (req, res) => {
         if (enableThinking) {
           fallbackConfig.thinkingConfig = { thinkingLevel: ThinkingLevel.HIGH };
         }
-        activeModel = "gemini-3.6-flash";
+        activeModel = "gemini-3.8-flash";
         response = await ai.models.generateContent({
-          model: "gemini-3.6-flash",
+          model: "gemini-3.8-flash",
           contents,
           config: fallbackConfig,
         });
