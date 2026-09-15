@@ -42,59 +42,65 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   }, [text]);
 
   const addImageFiles = useCallback((files: FileList | File[]) => {
-    Array.from(files).forEach((file) => {
+    const fileArray = Array.from(files);
+    fileArray.forEach((file) => {
       if (!file.type.startsWith("image/")) return;
 
       const reader = new FileReader();
       reader.onload = () => {
         const base64String = reader.result as string;
-        setImages((prev) => [
-          ...prev,
-          {
-            id: Math.random().toString(36).substring(2, 9),
-            data: base64String,
-            mimeType: file.type,
-            name: file.name || `Pasted_Image_${Date.now()}`,
-            size: file.size,
-          },
-        ]);
+        setImages((prev) => {
+          // Avoid adding identical base64 images
+          if (prev.some((img) => img.data === base64String)) {
+            return prev;
+          }
+          return [
+            ...prev,
+            {
+              id: Math.random().toString(36).substring(2, 9),
+              data: base64String,
+              mimeType: file.type,
+              name: file.name || `Pasted_Image_${Date.now()}`,
+              size: file.size,
+            },
+          ];
+        });
       };
       reader.readAsDataURL(file);
     });
   }, []);
 
-  // Handle Clipboard Paste (Ctrl+V / Cmd+V / Screenshot)
+  // Handle Clipboard Paste (Ctrl+V / Cmd+V / Screenshot) with strict deduplication
   const handlePaste = (e: React.ClipboardEvent) => {
     const clipboardData = e.clipboardData;
     if (!clipboardData) return;
 
-    const imageFiles: File[] = [];
+    const targetFiles: File[] = [];
 
-    // Check items
-    if (clipboardData.items) {
+    // 1. Prefer clipboardData.items (standard for screenshot pasting & clipboard images)
+    if (clipboardData.items && clipboardData.items.length > 0) {
       for (let i = 0; i < clipboardData.items.length; i++) {
         const item = clipboardData.items[i];
-        if (item.type.indexOf("image") !== -1) {
+        if (item.type.startsWith("image/")) {
           const file = item.getAsFile();
           if (file) {
-            imageFiles.push(file);
+            targetFiles.push(file);
           }
         }
       }
-    }
-
-    // Check files
-    if (clipboardData.files && clipboardData.files.length > 0) {
+    } else if (clipboardData.files && clipboardData.files.length > 0) {
+      // 2. Fallback to clipboardData.files only if items had no images
       for (let i = 0; i < clipboardData.files.length; i++) {
         const file = clipboardData.files[i];
-        if (file.type.startsWith("image/") && !imageFiles.includes(file)) {
-          imageFiles.push(file);
+        if (file.type.startsWith("image/")) {
+          targetFiles.push(file);
         }
       }
     }
 
-    if (imageFiles.length > 0) {
-      addImageFiles(imageFiles);
+    if (targetFiles.length > 0) {
+      // Prevent default paste of image filename or binary into text area
+      addImageFiles(targetFiles);
     }
   };
 

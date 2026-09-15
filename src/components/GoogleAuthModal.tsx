@@ -1,5 +1,16 @@
 import React, { useState } from "react";
-import { X, LogOut, CheckCircle2, ShieldCheck, Sparkles, UserCheck } from "lucide-react";
+import {
+  X,
+  LogOut,
+  Key,
+  ExternalLink,
+  ShieldCheck,
+  CheckCircle2,
+  UserCheck,
+  HelpCircle,
+  Copy,
+  Check,
+} from "lucide-react";
 import { GoogleUser } from "../types";
 
 interface GoogleAuthModalProps {
@@ -8,6 +19,8 @@ interface GoogleAuthModalProps {
   currentUser: GoogleUser | null;
   onLogin: (user: GoogleUser) => void;
   onLogout: () => void;
+  customApiKey?: string;
+  onSaveCustomApiKey?: (key: string) => void;
 }
 
 export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
@@ -16,10 +29,14 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
   currentUser,
   onLogin,
   onLogout,
+  customApiKey = "",
+  onSaveCustomApiKey,
 }) => {
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
+  const [apiKeyInput, setApiKeyInput] = useState(customApiKey);
   const [isQuickLogging, setIsQuickLogging] = useState(false);
+  const [isKeySaved, setIsKeySaved] = useState(false);
 
   if (!isOpen) return null;
 
@@ -38,11 +55,18 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
       isGoogleAccount: true,
     };
 
+    if (onSaveCustomApiKey && apiKeyInput.trim() !== customApiKey) {
+      onSaveCustomApiKey(apiKeyInput.trim());
+    }
+
     onLogin(newUser);
     onClose();
   };
 
-  const handleOneClickGoogleSignIn = (userEmail = "dongtb@bimhanoi.com.vn", userName = "Dong TB") => {
+  const handleOneClickGoogleSignIn = (
+    userEmail = "dongtb@bimhanoi.com.vn",
+    userName = "Dong TB"
+  ) => {
     setIsQuickLogging(true);
     setTimeout(() => {
       const newUser: GoogleUser = {
@@ -54,28 +78,40 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
         )}&backgroundColor=2563eb,4f46e5`,
         isGoogleAccount: true,
       };
+
+      if (onSaveCustomApiKey && apiKeyInput.trim() !== customApiKey) {
+        onSaveCustomApiKey(apiKeyInput.trim());
+      }
+
       onLogin(newUser);
       setIsQuickLogging(false);
       onClose();
-    }, 400);
+    }, 300);
+  };
+
+  const handleSaveApiKeyOnly = () => {
+    if (onSaveCustomApiKey) {
+      onSaveCustomApiKey(apiKeyInput.trim());
+      setIsKeySaved(true);
+      setTimeout(() => setIsKeySaved(false), 2000);
+    }
   };
 
   return (
     <div
       id="google-auth-modal-backdrop"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-xs"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-3 sm:p-4 backdrop-blur-xs overflow-y-auto"
       onClick={onClose}
     >
       <div
         id="google-auth-modal-dialog"
-        className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl"
+        className="my-auto w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 shadow-2xl transition-all"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3.5">
           <div className="flex items-center gap-2.5">
-            {/* Official Google G Logo */}
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white p-2 shadow-xs">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white p-2 shadow-xs shrink-0">
               <svg className="h-5 w-5" viewBox="0 0 24 24">
                 <path
                   fill="#4285F4"
@@ -97,10 +133,10 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
             </div>
             <div>
               <h3 className="text-sm font-bold text-slate-900">
-                {currentUser ? "Tài khoản Google" : "Đăng nhập Google"}
+                {currentUser ? "Tài khoản lưu trữ" : "Đăng nhập Tài khoản"}
               </h3>
               <p className="text-xs text-slate-500">
-                Sử dụng Gemini trực tiếp không cần API Key
+                Quản lý và đồng bộ lịch sử chat theo người dùng
               </p>
             </div>
           </div>
@@ -112,14 +148,26 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
           </button>
         </div>
 
-        {/* Logged in state */}
+        {/* IMPORTANT NOTICE BANNER: Clarify Login Purpose vs API Key */}
+        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/80 p-3.5 text-xs text-amber-900">
+          <div className="flex items-center gap-2 font-bold text-amber-950">
+            <HelpCircle className="h-4 w-4 text-amber-600 shrink-0" />
+            <span>Lưu ý quan trọng về Tài khoản &amp; API Key</span>
+          </div>
+          <p className="mt-1 leading-relaxed text-[11px] text-amber-900">
+            • <strong>Đăng nhập tài khoản</strong>: Chỉ phục vụ <strong>phân loại và lưu trữ lịch sử đoạn chat</strong> cho riêng bạn.<br />
+            • <strong>Gemini API Key</strong>: Để gửi câu hỏi và trò chuyện với mô hình AI, ứng dụng <strong>bắt buộc phải có API Key từ Google</strong>.
+          </p>
+        </div>
+
+        {/* Logged-in State */}
         {currentUser ? (
           <div className="mt-4 space-y-4">
-            <div className="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
+            <div className="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-3.5">
               <img
                 src={currentUser.picture}
                 alt={currentUser.name}
-                className="h-12 w-12 rounded-full border-2 border-white shadow-xs"
+                className="h-11 w-11 rounded-full border-2 border-white shadow-xs"
               />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5">
@@ -129,23 +177,74 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
                   <UserCheck className="h-4 w-4 text-emerald-600 shrink-0" />
                 </div>
                 <p className="text-xs text-slate-600 truncate">{currentUser.email}</p>
-                <div className="mt-1 flex items-center gap-1.5 text-[11px] font-semibold text-emerald-700">
-                  <ShieldCheck className="h-3.5 w-3.5" />
-                  <span>Trạng thái: Đã kích hoạt không cần API Key</span>
+                <div className="mt-0.5 flex items-center gap-1 text-[11px] font-semibold text-emerald-700">
+                  <ShieldCheck className="h-3 w-3" />
+                  <span>Đang lưu trữ lịch sử riêng cho tài khoản này</span>
                 </div>
               </div>
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 leading-relaxed space-y-1.5">
-              <div className="flex items-center gap-2 font-semibold text-slate-800">
-                <Sparkles className="h-4 w-4 text-blue-600" />
-                <span>Quyền lợi tài khoản:</span>
+            {/* API Key quick setup inside account */}
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <Key className="h-3.5 w-3.5 text-blue-600" />
+                  <span>Google Gemini API Key của bạn</span>
+                </label>
+                {customApiKey ? (
+                  <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                    Đã cấu hình
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-semibold text-red-600 bg-red-50 px-2 py-0.5 rounded border border-red-200">
+                    Chưa nhập Key
+                  </span>
+                )}
               </div>
-              <ul className="list-disc list-inside space-y-1 text-[11px] text-slate-600 pl-1">
-                <li>Sử dụng mô hình Gemini 3.6 Flash tốc độ cao qua hạ tầng hệ thống.</li>
-                <li>Tự động lưu và phân loại lịch sử trò chuyện theo tài khoản của bạn.</li>
-                <li>Chế độ High Thinking suy luận sâu không phụ thuộc máy chủ bên thứ ba.</li>
-              </ul>
+              <div className="flex gap-2">
+                <input
+                  type="password"
+                  placeholder="AIzaSy..."
+                  value={apiKeyInput}
+                  onChange={(e) => setApiKeyInput(e.target.value)}
+                  className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-800 font-mono placeholder-slate-400 focus:border-blue-500 focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={handleSaveApiKeyOnly}
+                  className="flex items-center gap-1 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800"
+                >
+                  {isKeySaved ? (
+                    <>
+                      <Check className="h-3.5 w-3.5 text-emerald-400" />
+                      <span>Đã lưu</span>
+                    </>
+                  ) : (
+                    <span>Lưu Key</span>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Guide on getting key */}
+            <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-3 text-[11px] text-blue-900 space-y-2">
+              <div className="font-bold text-blue-950 flex items-center justify-between">
+                <span>Cách lấy Gemini API Key miễn phí (Google AI Studio):</span>
+                <a
+                  href="https://aistudio.google.com/apikey"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-blue-600 font-semibold hover:underline"
+                >
+                  <span>Mở AI Studio</span>
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              </div>
+              <ol className="list-decimal list-inside space-y-1 text-blue-800 leading-relaxed pl-1">
+                <li>Truy cập <strong>aistudio.google.com/apikey</strong> và đăng nhập bằng Google.</li>
+                <li>Bấm nút <strong>"Create API key"</strong> (Tạo khóa API) ➔ Chọn hoặc tạo Project mới.</li>
+                <li>Sao chép mã khóa (bắt đầu bằng <code>AIzaSy...</code>) và dán vào ô trên.</li>
+              </ol>
             </div>
 
             <div className="flex items-center justify-between pt-2">
@@ -166,24 +265,14 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
                 onClick={onClose}
                 className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-blue-700"
               >
-                Đã hiểu &amp; Đóng
+                Hoàn tất &amp; Đóng
               </button>
             </div>
           </div>
         ) : (
           /* Login Form */
           <div className="mt-4 space-y-4">
-            <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-3.5">
-              <div className="flex items-center gap-2 text-xs font-bold text-blue-900">
-                <CheckCircle2 className="h-4 w-4 text-blue-600 shrink-0" />
-                <span>Trải nghiệm như ứng dụng Gemini chính thức</span>
-              </div>
-              <p className="mt-1 text-[11px] leading-relaxed text-blue-800">
-                Khi đăng nhập bằng Google, bạn có thể trò chuyện, dán ảnh và suy luận logic ngay lập tức mà <strong>không cần phải lấy hay nhập API Key</strong>.
-              </p>
-            </div>
-
-            {/* Quick 1-click Google Sign in */}
+            {/* Quick 1-click Sign in */}
             <div>
               <button
                 type="button"
@@ -211,7 +300,9 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
                   />
                 </svg>
                 <span>
-                  {isQuickLogging ? "Đang xác thực Google..." : "Đăng nhập nhanh với Google Account"}
+                  {isQuickLogging
+                    ? "Đang xác thực tài khoản..."
+                    : "Đăng nhập nhanh với Google (dongtb@bimhanoi.com.vn)"}
                 </span>
               </button>
             </div>
@@ -219,7 +310,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
             <div className="relative flex items-center justify-center">
               <div className="w-full border-t border-slate-200" />
               <span className="absolute bg-white px-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                Hoặc nhập Email tài khoản khác
+                Hoặc nhập Email khác
               </span>
             </div>
 
@@ -251,6 +342,27 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
                 />
               </div>
 
+              {/* Guide section */}
+              <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-3 text-[11px] text-blue-900 space-y-2">
+                <div className="font-bold text-blue-950 flex items-center justify-between">
+                  <span>Hướng dẫn lấy Gemini API Key (Miễn phí 100%):</span>
+                  <a
+                    href="https://aistudio.google.com/apikey"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-blue-600 font-semibold hover:underline"
+                  >
+                    <span>Lấy Key ngay</span>
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                </div>
+                <ol className="list-decimal list-inside space-y-1 text-blue-800 leading-relaxed pl-1">
+                  <li>Truy cập <code className="bg-white px-1 py-0.5 rounded border border-blue-200">aistudio.google.com/apikey</code></li>
+                  <li>Bấm <strong>"Create API key"</strong> ➔ Sao chép mã khóa.</li>
+                  <li>Dán mã vào phần <strong>Cài đặt (⚙️)</strong> để bắt đầu trò chuyện.</li>
+                </ol>
+              </div>
+
               <div className="flex items-center justify-end gap-2 pt-2">
                 <button
                   type="button"
@@ -263,7 +375,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
                   type="submit"
                   className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-blue-700"
                 >
-                  Xác nhận đăng nhập
+                  Xác nhận Đăng nhập
                 </button>
               </div>
             </form>

@@ -4,7 +4,7 @@ import {
   Plus,
   Trash2,
   Brain,
-  Zap,
+  Sparkles,
   X,
   Edit2,
   Check,
@@ -271,15 +271,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
 
-        {/* Footer info */}
+        {/* Footer info: General Google Gemini AI Branding */}
         <div className="border-t border-slate-200 p-3 bg-white shrink-0">
           <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-600 border border-slate-100">
             <span className="flex items-center gap-1.5 font-semibold text-slate-700 whitespace-nowrap">
-              <Zap className="h-3 w-3 text-emerald-600 shrink-0" />
-              Gemini 3.6 Flash
+              <Sparkles className="h-3 w-3 text-blue-600 shrink-0" />
+              Google Gemini AI
             </span>
-            <span className="rounded bg-slate-200/70 px-1.5 py-0.5 text-[10px] font-medium text-slate-600 whitespace-nowrap">
-              v2.4.0 SDK
+            <span className="flex items-center gap-1 text-[10px] font-medium text-emerald-600 whitespace-nowrap">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              Sẵn sàng
             </span>
           </div>
         </div>

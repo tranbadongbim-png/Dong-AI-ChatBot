@@ -23,6 +23,18 @@ interface MessageItemProps {
   onRegenerate?: () => void;
 }
 
+const getModelDisplayName = (modelId?: string) => {
+  if (!modelId) return "Gemini 3.6 Flash";
+  if (modelId === "gemini-flash-lite-latest") return "Gemini Flash Lite";
+  if (modelId === "gemini-3.6-flash") return "Gemini 3.6 Flash";
+  if (modelId === "gemini-2.5-flash") return "Gemini 2.5 Flash";
+  if (modelId === "gemini-2.5-pro") return "Gemini 2.5 Pro";
+  return modelId
+    .replace(/^models\//, "")
+    .replace(/-/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+};
+
 export const MessageItem: React.FC<MessageItemProps> = ({
   message,
   isLast,
@@ -114,7 +126,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
         {!isUser && (
           <div className="flex flex-wrap items-center gap-2 px-1 text-[11px] text-slate-500">
             <span className="font-semibold text-slate-700 flex items-center gap-1">
-              Gemini 3.6 Flash
+              {getModelDisplayName(message.modelUsed)}
             </span>
             {message.fallbackReason && (
               <span

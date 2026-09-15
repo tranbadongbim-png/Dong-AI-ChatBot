@@ -93,6 +93,40 @@ export default function App() {
     sessions.find((s) => s.id === activeSessionId) || sessions[0];
   const messages = activeSession ? activeSession.messages : [];
 
+  // Sync activeSession model and thinking when activeSessionId changes
+  useEffect(() => {
+    if (activeSession) {
+      if (activeSession.model) {
+        const validModels = ["gemini-3.6-flash", "gemini-flash-lite-latest"];
+        const safeModel = validModels.includes(activeSession.model)
+          ? activeSession.model
+          : "gemini-3.6-flash";
+        setSelectedModel(safeModel);
+      }
+      if (typeof activeSession.enableThinking === "boolean") {
+        setEnableThinking(activeSession.enableThinking);
+      }
+    }
+  }, [activeSessionId]);
+
+  // Model selector change handler
+  const handleSelectModel = (model: string) => {
+    setSelectedModel(model);
+    setSessions((prev) =>
+      prev.map((s) => (s.id === activeSessionId ? { ...s, model } : s))
+    );
+  };
+
+  // Thinking toggle handler
+  const handleToggleThinking = (enabled: boolean) => {
+    setEnableThinking(enabled);
+    setSessions((prev) =>
+      prev.map((s) =>
+        s.id === activeSessionId ? { ...s, enableThinking: enabled } : s
+      )
+    );
+  };
+
   // Persist sessions for the active user key
   useEffect(() => {
     try {
@@ -373,7 +407,7 @@ export default function App() {
 
   const handleSelectPreset = (preset: PresetPrompt) => {
     if (preset.enableThinking) {
-      setEnableThinking(true);
+      handleToggleThinking(true);
     }
     handleSendMessage(
       preset.prompt,
@@ -412,7 +446,7 @@ export default function App() {
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
         enableThinking={enableThinking}
-        onToggleThinking={setEnableThinking}
+        onToggleThinking={handleToggleThinking}
       />
 
       {/* Main Chat Area */}
@@ -420,9 +454,9 @@ export default function App() {
         {/* Top Header */}
         <Header
           enableThinking={enableThinking}
-          onToggleThinking={setEnableThinking}
+          onToggleThinking={handleToggleThinking}
           selectedModel={selectedModel}
-          onSelectModel={setSelectedModel}
+          onSelectModel={handleSelectModel}
           onNewChat={handleNewSession}
           onClearChat={handleClearCurrentChat}
           onOpenSettings={() => setIsSettingsOpen(true)}
@@ -442,7 +476,7 @@ export default function App() {
             <EmptyState
               onSelectPreset={handleSelectPreset}
               enableThinking={enableThinking}
-              onToggleThinking={setEnableThinking}
+              onToggleThinking={handleToggleThinking}
             />
           ) : (
             <div className="mx-auto max-w-4xl divide-y divide-slate-100">
@@ -469,7 +503,7 @@ export default function App() {
           onStop={handleStopStreaming}
           isLoading={isLoading}
           enableThinking={enableThinking}
-          onToggleThinking={setEnableThinking}
+          onToggleThinking={handleToggleThinking}
         />
       </div>
 
@@ -501,6 +535,19 @@ export default function App() {
         currentUser={currentUser}
         onLogin={handleLogin}
         onLogout={handleLogout}
+        customApiKey={customApiKey}
+        onSaveCustomApiKey={(key) => {
+          setCustomApiKey(key);
+          try {
+            if (key) {
+              localStorage.setItem(API_KEY_STORAGE, key);
+            } else {
+              localStorage.removeItem(API_KEY_STORAGE);
+            }
+          } catch (e) {
+            console.error("Failed to persist API key", e);
+          }
+        }}
       />
     </div>
   );

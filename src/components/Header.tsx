@@ -1,5 +1,5 @@
 import React from "react";
-import { Brain, Sparkles, Plus, Trash2, Menu, Key, Cpu } from "lucide-react";
+import { Brain, Sparkles, Plus, Trash2, Menu, Key, Cpu, ChevronDown } from "lucide-react";
 import { GoogleUser } from "../types";
 
 interface HeaderProps {
@@ -34,54 +34,53 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <header
       id="app-header"
-      className="sticky top-0 z-30 flex items-center justify-between border-b border-slate-200 bg-white/95 px-3 sm:px-4 py-2.5 sm:py-3 shadow-xs backdrop-blur-md shrink-0 gap-2 overflow-x-hidden"
+      className="sticky top-0 z-30 flex items-center justify-between border-b border-slate-200 bg-white/95 px-3 sm:px-4 py-2.5 shadow-xs backdrop-blur-md shrink-0 gap-3"
     >
-      <div className="flex items-center gap-2.5 min-w-0">
+      {/* Left Branding - Always fully visible, never squeezed */}
+      <div className="flex items-center gap-2.5 shrink-0 min-w-max">
         <button
           id="btn-sidebar-toggle"
           onClick={onToggleSidebar}
           aria-label="Toggle Sidebar"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition-colors hover:bg-slate-100 md:hidden"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition-colors hover:bg-slate-100 md:hidden"
         >
-          <Menu className="h-5 w-5" />
+          <Menu className="h-4 w-4" />
         </button>
 
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-sm">
-            <Sparkles className="h-5 w-5" />
+        <div className="flex items-center gap-2.5 shrink-0">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-xs">
+            <Sparkles className="h-4 w-4" />
           </div>
-          <div className="min-w-0">
+          <div className="shrink-0">
             <div className="flex items-center gap-2">
-              <h1 className="text-base font-bold text-slate-900 whitespace-nowrap">
+              <h1 className="text-sm font-bold text-slate-900 whitespace-nowrap">
                 Gemini AI Studio
               </h1>
-              <span className="hidden sm:inline-flex shrink-0 whitespace-nowrap rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 border border-emerald-200">
+              <span className="hidden xl:inline-flex shrink-0 whitespace-nowrap rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 border border-emerald-200">
                 Miễn phí &amp; Unlimited
               </span>
             </div>
-            <p className="hidden text-xs text-slate-500 sm:block whitespace-nowrap truncate">
-              Google Gemini Ecosystem - Đa mô hình thông minh
+            <p className="hidden 2xl:block text-[11px] text-slate-500 whitespace-nowrap">
+              Google Gemini Multi-Model
             </p>
           </div>
         </div>
       </div>
 
-      {/* Right side action controls */}
+      {/* Right Controls Bar - Compact, neatly spaced & zero-wrap */}
       <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-        {/* Model Selector Dropdown */}
-        <div className="relative hidden md:flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg px-2 h-8">
+        {/* Model Selector Dropdown - Compact & Clean */}
+        <div className="relative flex items-center gap-1.5 bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-lg px-2 h-8 transition-colors shrink-0">
           <Cpu className="h-3.5 w-3.5 text-blue-600 shrink-0" />
           <select
             id="select-model-dropdown"
             value={selectedModel}
             onChange={(e) => onSelectModel(e.target.value)}
-            className="bg-transparent text-xs font-semibold text-slate-800 focus:outline-none cursor-pointer pr-1"
+            className="bg-transparent text-xs font-semibold text-slate-800 focus:outline-none cursor-pointer pr-1 w-auto max-w-[130px] sm:max-w-[155px] truncate"
             title="Chọn model Gemini"
           >
-            <option value="gemini-3.6-flash">Gemini 3.6 Flash (Cân bằng &amp; Thông minh)</option>
-            <option value="gemini-flash-lite-latest">Gemini Flash Lite (Nhẹ, Cực nhanh &amp; Free)</option>
-            <option value="gemini-2.5-flash">Gemini 2.5 Flash (Tốc độ chuẩn)</option>
-            <option value="gemini-2.5-pro">Gemini 2.5 Pro (Suy luận &amp; Coding sâu)</option>
+            <option value="gemini-3.6-flash">Gemini 3.6 Flash</option>
+            <option value="gemini-flash-lite-latest">Gemini Flash Lite</option>
           </select>
         </div>
 
@@ -94,38 +93,39 @@ export const Header: React.FC<HeaderProps> = ({
               ? "Chế độ suy luận sâu đang bật"
               : "Bật chế độ High Thinking để xử lý câu hỏi phức tạp"
           }
-          className={`relative flex items-center gap-1.5 rounded-full px-2.5 sm:px-3 py-1.5 text-xs font-semibold whitespace-nowrap shrink-0 transition-all ${
+          className={`relative flex items-center gap-1.5 rounded-lg px-2.5 h-8 text-xs font-semibold whitespace-nowrap shrink-0 transition-all ${
             enableThinking
-              ? "bg-amber-500 text-white shadow-md shadow-amber-500/25 ring-2 ring-amber-400/50"
-              : "border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 hover:border-slate-300"
+              ? "bg-amber-500 text-white shadow-xs ring-1 ring-amber-400"
+              : "border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
           }`}
         >
-          <Brain className={`h-4 w-4 shrink-0 ${enableThinking ? "animate-pulse" : "text-amber-600"}`} />
-          <span className="hidden lg:inline whitespace-nowrap">High Thinking</span>
-          <span className="text-[10px] opacity-90 whitespace-nowrap">
+          <Brain className={`h-3.5 w-3.5 shrink-0 ${enableThinking ? "animate-pulse" : "text-amber-600"}`} />
+          <span className="hidden md:inline whitespace-nowrap">Thinking</span>
+          <span className="text-[10px] opacity-90 whitespace-nowrap font-bold">
             {enableThinking ? "BẬT" : "TẮT"}
           </span>
         </button>
 
-        {/* Action buttons: New chat */}
+        {/* New chat */}
         <button
           id="btn-header-new-chat"
           onClick={onNewChat}
           title="Tạo cuộc trò chuyện mới"
-          className="flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 shadow-xs whitespace-nowrap shrink-0 transition-colors hover:bg-slate-50 hover:border-slate-300"
+          className="flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 shadow-xs whitespace-nowrap shrink-0 transition-colors hover:bg-slate-50"
         >
-          <Plus className="h-4 w-4 text-blue-600 shrink-0" />
-          <span className="hidden sm:inline whitespace-nowrap">Đoạn chat mới</span>
+          <Plus className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+          <span className="hidden lg:inline whitespace-nowrap">Đoạn chat mới</span>
         </button>
 
+        {/* Clear chat (icon only) */}
         {hasMessages && (
           <button
             id="btn-header-clear-chat"
             onClick={onClearChat}
             title="Xóa lịch sử cuộc trò chuyện hiện tại"
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 hover:border-red-200"
           >
-            <Trash2 className="h-4 w-4" />
+            <Trash2 className="h-3.5 w-3.5" />
           </button>
         )}
 
@@ -134,7 +134,7 @@ export const Header: React.FC<HeaderProps> = ({
           id="btn-header-settings"
           onClick={onOpenSettings}
           title={hasApiKey ? "Cài đặt & Quản lý API Key (Đã kích hoạt)" : "Cài đặt & Nhập API Key"}
-          className={`relative flex h-8 items-center gap-1.5 rounded-lg border px-2 text-xs font-medium whitespace-nowrap shrink-0 transition-colors ${
+          className={`relative flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium whitespace-nowrap shrink-0 transition-colors ${
             hasApiKey
               ? "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
               : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
@@ -153,10 +153,10 @@ export const Header: React.FC<HeaderProps> = ({
           onClick={onOpenGoogleAuth}
           title={
             currentUser
-              ? `Đang đăng nhập: ${currentUser.email} (Không cần API Key)`
-              : "Đăng nhập Google để dùng trực tiếp không cần API Key"
+              ? `Tài khoản lưu trữ: ${currentUser.email} (${currentUser.name})`
+              : "Đăng nhập Google để lưu trữ lịch sử đoạn chat theo tài khoản"
           }
-          className={`flex h-8 items-center gap-2 rounded-xl border px-2.5 py-1 text-xs font-semibold whitespace-nowrap shrink-0 transition-all ${
+          className={`flex h-8 items-center gap-2 rounded-lg border px-2.5 text-xs font-semibold whitespace-nowrap shrink-0 transition-all ${
             currentUser
               ? "border-emerald-300 bg-emerald-50/80 text-emerald-800 hover:bg-emerald-100"
               : "border-slate-300 bg-white text-slate-700 shadow-xs hover:bg-slate-50 hover:border-slate-400 active:scale-95"
@@ -167,16 +167,16 @@ export const Header: React.FC<HeaderProps> = ({
               <img
                 src={currentUser.picture}
                 alt={currentUser.name}
-                className="h-5 w-5 rounded-full object-cover border border-emerald-300 shrink-0"
+                className="h-4 w-4 rounded-full object-cover border border-emerald-300 shrink-0"
               />
-              <span className="hidden sm:inline max-w-[90px] truncate">
+              <span className="hidden sm:inline max-w-[80px] truncate">
                 {currentUser.name}
               </span>
-              <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0" />
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
             </>
           ) : (
             <>
-              <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24">
+              <svg className="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24">
                 <path
                   fill="#4285F4"
                   d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
