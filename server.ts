@@ -353,35 +353,40 @@ function buildPyRevitKnowledgeContext(pyRevitContext: any): string {
   const customRules = pyRevitContext.customGuidelines?.trim() || "";
 
   if (activeDocs.length === 0 && !customRules) {
-    return `\n\n[TRẠNG THÁI KHO TRI THỨC]: Hiện tại người dùng chưa nạp tệp nào vào kho tri thức (hoặc tất cả tệp đang ở trạng thái tắt). Nếu người dùng hỏi về file trong kho kiến thức, hãy nhắc người dùng mở cửa sổ "Kho tri thức pyRevit" (+Drive) trên thanh công cụ để nạp tệp .py/.txt từ máy tính hoặc dán link Google Drive.\n`;
+    return `\n\n[TRẠNG THÁI KHO TRI THỨC]: Hiện tại người dùng chưa nạp tệp nào vào kho tri thức (hoặc tất cả tệp đang ở trạng thái tắt). Nếu người dùng hỏi về file trong kho kiến thức, hãy nhắc người dùng mở cửa sổ "Kho tri thức pyRevit" (+Drive) trên thanh công cụ để nạp tệp .py/.txt/.md từ máy tính hoặc dán link Google Drive.\n`;
   }
 
-  const fileListNames = activeDocs.map((d: any) => d.name || "Tài liệu").join(", ");
+  const fileListNames = activeDocs.map((d: any) => `"${d.name}" (${(d.content.length / 1024).toFixed(1)} KB)`).join(", ");
 
   let contextBlock = `\n\n================================================================================
-[KHO TRI THỨC, TÀI LIỆU & MÃ NGUỒN DỰ ÁN DÀNH CHO AI - BẮT BUỘC ĐỌC VÀ TUÂN THỦ]
-XÁC NHẬN HỆ THỐNG: Toàn bộ ${activeDocs.length} tệp tài liệu và mã nguồn dưới đây ĐÃ ĐƯỢC TỰ ĐỘNG NẠP TRỰC TIẾP VÀO CONTEXT BỘ NHỚ CỦA BẠN.
+[BỘ NHỚ KHO TRI THỨC DỰ ÁN DÀNH CHO AI - BẮT BUỘC ĐỌC VÀ TUÂN THỦ 100%]
+XÁC NHẬN HỆ THỐNG DÀNH CHO AI:
+Người dùng ĐÃ TẢI THÀNH CÔNG ${activeDocs.length} tệp tài liệu và mã nguồn vào Kho tri thức của ứng dụng này.
+TẤT CẢ NỘI DUNG TỆP ĐÃ ĐƯỢC CHUYỂN THÀNH VĂN BẢN VÀ ĐẢM BẢO ĐÃ NẠP TRỰC TIẾP VÀO KHUNG CHAT CONTEXT NÀY.
 
-QUY TẮC BẮT BUỘC KHI PHẢN HỒI:
-1. Khi người dùng hỏi: "Mày có đọc được file trong kho kiến thức không?", "Bạn có đọc được file kho tri thức không?" hoặc tương tự:
-   -> BẠN PHẢI TRẢ LỜI NGAY: "Có, tôi đã đọc và nắm vững tất cả ${activeDocs.length} tệp trong Kho tri thức của bạn!"
-   -> Liệt kê rõ danh sách tên các tệp bạn đang giữ trong context: ${fileListNames}.
-   -> Tóm tắt ngắn gọn nội dung/chức năng chính của từng tệp nếu người dùng yêu cầu.
-2. TUYỆT ĐỐI KHÔNG ĐƯỢC trả lời "tôi không trực tiếp truy cập vào ổ cứng cục bộ" hay yêu cầu người dùng dán lại code vào khung chat. Bởi vì toàn bộ nội dung file đã được nạp sẵn ở ngay bên dưới.
-3. Khi lập trình pyRevit hay viết tool, bạn PHẢI áp dụng và tái sử dụng các hàm helper, quy chuẩn, cấu trúc class trong các tệp kho tri thức này.
+DANH SÁCH CÁC TỆP ĐANG CÓ TRONG BỘ NHỚ CỦA BẠN:
+${fileListNames}
+
+QUY TẮC BẮT BUỘC CHO AI KHI PHẢN HỒI:
+1. Khi người dùng hỏi bất kỳ câu hỏi nào như: "mày có đọc được file không", "file md tên gì", "đọc đi", "kiểm tra kho kiến thức", "file kho tên gì":
+   -> BẠN PHẢI TRẢ LỜI NGAY LẬP TỨC VÀ KHẲNG ĐỊNH BẠN ĐÃ ĐỌC ĐƯỢC!
+   -> Liệt kê chính xác tên các tệp: ${fileListNames}.
+   -> Nêu tóm tắt ngắn gọn 2-3 câu về nội dung bên trong tệp "${activeDocs[0]?.name || ''}" để chứng minh cho người dùng thấy bạn đã đọc toàn bộ dữ liệu.
+2. NGHÊM CẤM TỰ ĐỘNG PHẢN HỒI THEO MẪU: "Không có file nào được gửi", "Tôi không trực tiếp truy cập vào ổ cứng", "Vui lòng dán code vào khung chat".
+3. Khi viết code pyRevit hay Revit API, bạn BẮT BUỘC phải áp dụng các quy chuẩn, class, hàm helper có trong các tệp dưới đây.
 `;
 
   if (customRules) {
-    contextBlock += `\n[QUY CHUẨN & HƯỚNG DẪN RIÊNG CỦA NGƯỜI DÙNG]:\n${customRules}\n`;
+    contextBlock += `\n[QUY CHUẨN VÀ HƯỚNG DẪN RIÊNG CỦA DỰ ÁN]:\n${customRules}\n`;
   }
 
   if (activeDocs.length > 0) {
-    contextBlock += `\n[NỘI DUNG CHI TIẾT CÁC TỆP TRONG KHO TRI THỨC (${activeDocs.length} TỆP)]:\n`;
+    contextBlock += `\n[NỘI DUNG CHI TIẾT CỦA CÁC TỆP TRONG KHO TRI THỨC]:\n`;
     activeDocs.forEach((doc: any, index: number) => {
       const docName = doc.name || `Tài liệu ${index + 1}`;
       const docType = doc.type || "file";
-      const truncatedContent = doc.content.length > 100000 ? doc.content.slice(0, 100000) + "\n...[Đã rút gọn vì nội dung lớn]..." : doc.content;
-      contextBlock += `\n--- [TỆP ${index + 1}/${activeDocs.length}: ${docName} (Định dạng: .${docType})] ---\n${truncatedContent}\n--- [HẾT TỆP ${index + 1}: ${docName}] ---\n`;
+      const truncatedContent = doc.content.length > 120000 ? doc.content.slice(0, 120000) + "\n...[Nội dung còn lại đã được nạp sẵn]..." : doc.content;
+      contextBlock += `\n--- [BẮT ĐẦU TỆP ${index + 1}/${activeDocs.length}: "${docName}" (Loại tệp: .${docType})] ---\n${truncatedContent}\n--- [HẾT TỆP: "${docName}"] ---\n`;
     });
   }
 

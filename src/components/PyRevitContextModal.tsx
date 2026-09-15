@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   X,
   FolderGit2,
@@ -54,7 +54,36 @@ export const PyRevitContextModal: React.FC<PyRevitContextModalProps> = ({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Sync state when modal opens or config updates from parent
+  useEffect(() => {
+    if (isOpen) {
+      setDriveUrl(config.driveFolderUrl || "");
+      setDocuments(config.documents || []);
+      setCustomGuidelines(config.customGuidelines || "");
+      setEnforceFullReading(typeof config.enforceFullReading === "boolean" ? config.enforceFullReading : true);
+      setAutoSync(config.autoSync || false);
+    }
+  }, [isOpen, config]);
+
   if (!isOpen) return null;
+
+  // Instant persistence helper to guarantee files are saved even if modal is closed via X
+  const persistChanges = (
+    updatedDocs: PyRevitDocItem[] = documents,
+    updatedUrl: string = driveUrl,
+    updatedGuidelines: string = customGuidelines,
+    updatedEnforce: boolean = enforceFullReading
+  ) => {
+    const updatedConfig: PyRevitContextConfig = {
+      driveFolderUrl: updatedUrl.trim(),
+      autoSync,
+      enforceFullReading: updatedEnforce,
+      customGuidelines: updatedGuidelines.trim(),
+      documents: updatedDocs,
+      lastSyncedAt: Date.now(),
+    };
+    onSaveConfig(updatedConfig);
+  };
 
   // Handle Drive Sync
   const handleSyncDrive = async () => {
@@ -86,16 +115,7 @@ export const PyRevitContextModal: React.FC<PyRevitContextModalProps> = ({
         const nonDriveDocs = documents.filter((d) => d.source !== "google_drive");
         const newDocs = [...nonDriveDocs, ...data.documents];
         setDocuments(newDocs);
-
-        const updatedConfig: PyRevitContextConfig = {
-          driveFolderUrl: driveUrl.trim(),
-          autoSync,
-          enforceFullReading,
-          customGuidelines,
-          documents: newDocs,
-          lastSyncedAt: Date.now(),
-        };
-        onSaveConfig(updatedConfig);
+        persistChanges(newDocs, driveUrl);
 
         setSyncStatus({
           type: "success",
@@ -104,7 +124,7 @@ export const PyRevitContextModal: React.FC<PyRevitContextModalProps> = ({
       } else {
         setSyncStatus({
           type: "error",
-          message: data.message || "Không thể tải thư mục Google Drive.",
+          message: data.message || "Không thể tải thư mục Google Drive. Bạn có thể tải file trực tiếp từ máy tính bằng nút bên dưới.",
         });
       }
     } catch (err: any) {
@@ -153,9 +173,10 @@ export const PyRevitContextModal: React.FC<PyRevitContextModalProps> = ({
     Promise.all(readPromises).then(() => {
       const merged = [...documents, ...newDocs];
       setDocuments(merged);
+      persistChanges(merged);
       setSyncStatus({
         type: "success",
-        message: `Đã tải lên thành công ${newDocs.length} tệp từ máy tính.`,
+        message: `Đã nạp và lưu thành công ${newDocs.length} tệp từ máy tính vào Kho tri thức!`,
       });
       if (fileInputRef.current) fileInputRef.current.value = "";
     });
@@ -165,18 +186,21 @@ export const PyRevitContextModal: React.FC<PyRevitContextModalProps> = ({
   const handleAddManual = () => {
     if (!manualName.trim() || !manualContent.trim()) return;
 
+    const ext = manualName.split(".").pop()?.toLowerCase() || "txt";
     const newDoc: PyRevitDocItem = {
       id: "manual_" + Date.now().toString(36),
       name: manualName.trim(),
       content: manualContent.trim(),
       size: manualContent.length,
-      type: manualName.endsWith(".py") ? "py" : "txt",
+      type: ext,
       source: "manual",
       updatedAt: Date.now(),
       enabled: true,
     };
 
-    setDocuments([...documents, newDoc]);
+    const merged = [...documents, newDoc];
+    setDocuments(merged);
+    persistChanges(merged);
     setManualName("");
     setManualContent("");
     setIsAddingManual(false);
@@ -184,27 +208,21 @@ export const PyRevitContextModal: React.FC<PyRevitContextModalProps> = ({
 
   // Toggle document enable/disable
   const handleToggleDoc = (docId: string) => {
-    setDocuments(
-      documents.map((d) => (d.id === docId ? { ...d, enabled: !d.enabled } : d))
-    );
+    const updated = documents.map((d) => (d.id === docId ? { ...d, enabled: !d.enabled } : d));
+    setDocuments(updated);
+    persistChanges(updated);
   };
 
   // Delete document
   const handleDeleteDoc = (docId: string) => {
-    setDocuments(documents.filter((d) => d.id !== docId));
+    const updated = documents.filter((d) => d.id !== docId);
+    setDocuments(updated);
+    persistChanges(updated);
   };
 
-  // Save changes
+  // Save changes explicitly
   const handleSave = () => {
-    const updatedConfig: PyRevitContextConfig = {
-      driveFolderUrl: driveUrl.trim(),
-      autoSync,
-      enforceFullReading,
-      customGuidelines: customGuidelines.trim(),
-      documents,
-      lastSyncedAt: config.lastSyncedAt || Date.now(),
-    };
-    onSaveConfig(updatedConfig);
+    persistChanges(documents, driveUrl, customGuidelines, enforceFullReading);
     onClose();
   };
 
