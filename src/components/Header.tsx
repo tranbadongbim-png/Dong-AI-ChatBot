@@ -1,5 +1,5 @@
 import React from "react";
-import { Brain, Zap, Sparkles, Plus, Trash2, Sliders, Menu } from "lucide-react";
+import { Brain, Zap, Sparkles, Plus, Trash2, Sliders, Menu, Key } from "lucide-react";
 
 interface HeaderProps {
   enableThinking: boolean;
@@ -11,6 +11,7 @@ interface HeaderProps {
   onOpenSettings: () => void;
   onToggleSidebar: () => void;
   hasMessages: boolean;
+  hasApiKey?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -23,6 +24,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenSettings,
   onToggleSidebar,
   hasMessages,
+  hasApiKey,
 }) => {
   return (
     <header
@@ -124,10 +126,18 @@ export const Header: React.FC<HeaderProps> = ({
         <button
           id="btn-header-settings"
           onClick={onOpenSettings}
-          title="Tùy chỉnh Prompt hệ thống"
-          className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+          title={hasApiKey ? "Cài đặt & Quản lý API Key (Đã kích hoạt)" : "Cài đặt & Nhập API Key (Khuyên dùng cho Cloudflare)"}
+          className={`relative flex h-8 items-center gap-1.5 rounded-lg border px-2 text-xs font-medium transition-colors ${
+            hasApiKey
+              ? "border-emerald-200 bg-emerald-50/50 text-emerald-700 hover:bg-emerald-100/60 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-400"
+              : "border-slate-200 text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+          }`}
         >
-          <Sliders className="h-4 w-4" />
+          <Key className="h-3.5 w-3.5" />
+          <span className="hidden lg:inline">{hasApiKey ? "API Key OK" : "Cài đặt"}</span>
+          {hasApiKey && (
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+          )}
         </button>
       </div>
     </header>

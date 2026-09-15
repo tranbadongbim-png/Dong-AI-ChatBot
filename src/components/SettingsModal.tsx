@@ -1,11 +1,13 @@
 import React, { useState } from "react";
-import { X, Sparkles, Sliders, Check, RotateCcw } from "lucide-react";
+import { X, Sparkles, Sliders, Check, RotateCcw, Key, ShieldCheck } from "lucide-react";
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   systemInstruction: string;
   onSaveSystemInstruction: (instruction: string) => void;
+  customApiKey: string;
+  onSaveCustomApiKey: (apiKey: string) => void;
 }
 
 const SYSTEM_PROMPT_PRESETS = [
@@ -28,13 +30,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onClose,
   systemInstruction,
   onSaveSystemInstruction,
+  customApiKey,
+  onSaveCustomApiKey,
 }) => {
   const [instruction, setInstruction] = useState(systemInstruction);
+  const [apiKey, setApiKey] = useState(customApiKey || "");
+  const [showKey, setShowKey] = useState(false);
 
   if (!isOpen) return null;
 
   const handleSave = () => {
     onSaveSystemInstruction(instruction);
+    onSaveCustomApiKey(apiKey.trim());
     onClose();
   };
 
@@ -60,10 +67,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
             <div>
               <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
-                Cài đặt Prompt Hệ Thống (System Instruction)
+                Cài đặt & Khóa API
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Định hình phong cách và vai trò của Gemini 3.8
+                Cấu hình API Key Cloudflare & Prompt Hệ Thống
               </p>
             </div>
           </div>
@@ -75,16 +82,57 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </button>
         </div>
 
-        <div className="mt-4 space-y-4">
+        <div className="mt-4 space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+          {/* Gemini API Key section */}
+          <div className="rounded-xl border border-amber-200/80 bg-amber-50/50 p-3.5 dark:border-amber-900/50 dark:bg-amber-950/20">
+            <div className="flex items-center justify-between">
+              <label className="flex items-center gap-1.5 text-xs font-semibold text-amber-900 dark:text-amber-300">
+                <Key className="h-3.5 w-3.5 text-amber-600" />
+                <span>Google Gemini API Key (Bắt buộc khi chạy trên Cloudflare)</span>
+              </label>
+              <button
+                type="button"
+                onClick={() => setShowKey(!showKey)}
+                className="text-[11px] font-medium text-amber-700 hover:underline dark:text-amber-400"
+              >
+                {showKey ? "Ẩn" : "Hiện"}
+              </button>
+            </div>
+            <p className="mt-1 text-[11px] text-amber-700/90 dark:text-amber-400/90">
+              Nhập API Key để app chat trực tiếp với Google Gemini, không bị lỗi 405 khi deploy lên Cloudflare. Khóa được lưu an toàn trong trình duyệt của bạn.
+            </p>
+            <input
+              type={showKey ? "text" : "password"}
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder="AIzaSy..."
+              className="mt-2 w-full rounded-lg border border-amber-300/80 bg-white px-3 py-2 text-xs font-mono text-slate-800 placeholder-slate-400 focus:border-blue-500 focus:outline-none dark:border-amber-800 dark:bg-slate-800 dark:text-slate-100"
+            />
+            <div className="mt-2 flex items-center justify-between text-[11px]">
+              <span className="text-slate-500 flex items-center gap-1">
+                <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />
+                Lưu trữ cục bộ (Local Storage)
+              </span>
+              <a
+                href="https://aistudio.google.com/app/apikey"
+                target="_blank"
+                rel="noreferrer"
+                className="text-blue-600 hover:underline dark:text-blue-400"
+              >
+                Lấy API key miễn phí ↗
+              </a>
+            </div>
+          </div>
+
           <div>
             <label className="mb-1.5 block text-xs font-medium text-slate-700 dark:text-slate-300">
-              Chỉ dẫn hệ thống cho mô hình
+              Chỉ dẫn hệ thống cho mô hình (System Instruction)
             </label>
             <textarea
               value={instruction}
               onChange={(e) => setInstruction(e.target.value)}
               placeholder="Nhập vai trò hoặc quy tắc ứng xử (ví dụ: Bạn là chuyên gia giải toán...)"
-              rows={4}
+              rows={3}
               className="w-full rounded-xl border border-slate-300 p-3 text-xs text-slate-800 placeholder-slate-400 focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
             />
           </div>
@@ -118,7 +166,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
           >
             <RotateCcw className="h-3.5 w-3.5" />
-            <span>Mặc định</span>
+            <span>Mặc định Prompt</span>
           </button>
           <div className="flex items-center gap-2">
             <button

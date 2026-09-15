@@ -6,8 +6,10 @@ import { ChatInput } from "./components/ChatInput";
 import { EmptyState } from "./components/EmptyState";
 import { SettingsModal } from "./components/SettingsModal";
 import { ChatImage, ChatMessage, ChatSession, PresetPrompt } from "./types";
+import { sendChatMessage } from "./services/geminiClient";
 
 const STORAGE_KEY = "gemini_38_sessions_v1";
+const API_KEY_STORAGE = "gemini_custom_api_key_v1";
 
 function createNewSession(enableThinking: boolean, model: string): ChatSession {
   return {
@@ -42,6 +44,13 @@ export default function App() {
   const [enableThinking, setEnableThinking] = useState<boolean>(false);
   const [selectedModel, setSelectedModel] = useState<string>("gemini-3.8-flash");
   const [systemInstruction, setSystemInstruction] = useState<string>("");
+  const [customApiKey, setCustomApiKey] = useState<string>(() => {
+    try {
+      return localStorage.getItem(API_KEY_STORAGE) || "";
+    } catch {
+      return "";
+    }
+  });
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
@@ -157,94 +166,38 @@ export default function App() {
         })),
       }));
 
-      const payload = {
-        prompt,
-        history,
-        images: images.map((img) => ({
-          data: img.data,
-          mimeType: img.mimeType,
-        })),
-        enableThinking: isThinkingMode,
-        model: modelToUse,
-        systemInstruction: systemInstruction || undefined,
-      };
-
-      const response = await fetch("/api/gemini/stream", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-        signal: abortController.signal,
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(
-          errorData.error || `Yêu cầu thất bại với mã trạng thái ${response.status}`
-        );
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error("Không thể đọc luồng dữ liệu từ máy chủ.");
-
-      const decoder = new TextDecoder("utf-8");
       let accumulatedText = "";
       let accumulatedThought = "";
-      let buffer = "";
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      await sendChatMessage({
+        prompt,
+        history,
+        images,
+        enableThinking: isThinkingMode,
+        model: modelToUse,
+        systemInstruction,
+        customApiKey,
+        signal: abortController.signal,
+        onChunk: ({ text, thought, model, fallbackReason }) => {
+          if (text) accumulatedText += text;
+          if (thought) accumulatedThought += thought;
 
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed.startsWith("data:")) continue;
-          const dataStr = trimmed.slice(5).trim();
-
-          if (dataStr === "[DONE]") {
-            break;
-          }
-
-          try {
-            const parsed = JSON.parse(dataStr);
-            if (parsed.error) {
-              throw new Error(parsed.error);
-            }
-            if (parsed.text) {
-              accumulatedText += parsed.text;
-            }
-            if (parsed.thought) {
-              accumulatedThought += parsed.thought;
-            }
-            const currentModel = parsed.model;
-            const fallbackReason = parsed.fallbackReason;
-
-            // Update model message
-            updateActiveSessionMessages((prev) =>
-              prev.map((msg) =>
-                msg.id === modelMessageId
-                  ? {
-                      ...msg,
-                      content: accumulatedText,
-                      thoughtProcess: accumulatedThought,
-                      modelUsed: currentModel || msg.modelUsed,
-                      fallbackReason: fallbackReason || msg.fallbackReason,
-                      isStreaming: true,
-                    }
-                  : msg
-              )
-            );
-          } catch (e: any) {
-            console.error("SSE parse or API error:", e);
-            throw e;
-          }
-        }
-      }
+          updateActiveSessionMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === modelMessageId
+                ? {
+                    ...msg,
+                    content: accumulatedText,
+                    thoughtProcess: accumulatedThought,
+                    modelUsed: model || msg.modelUsed,
+                    fallbackReason: fallbackReason || msg.fallbackReason,
+                    isStreaming: true,
+                  }
+                : msg
+            )
+          );
+        },
+      });
 
       // Mark streaming completed
       updateActiveSessionMessages((prev) =>
@@ -383,6 +336,7 @@ export default function App() {
           onOpenSettings={() => setIsSettingsOpen(true)}
           onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
           hasMessages={messages.length > 0}
+          hasApiKey={Boolean(customApiKey && customApiKey.trim())}
         />
 
         {/* Messages List / Empty State */}
@@ -431,6 +385,19 @@ export default function App() {
         onClose={() => setIsSettingsOpen(false)}
         systemInstruction={systemInstruction}
         onSaveSystemInstruction={setSystemInstruction}
+        customApiKey={customApiKey}
+        onSaveCustomApiKey={(key) => {
+          setCustomApiKey(key);
+          try {
+            if (key) {
+              localStorage.setItem(API_KEY_STORAGE, key);
+            } else {
+              localStorage.removeItem(API_KEY_STORAGE);
+            }
+          } catch (e) {
+            console.error("Failed to persist API key", e);
+          }
+        }}
       />
     </div>
   );
