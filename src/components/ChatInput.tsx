@@ -1,10 +1,11 @@
-import React, { useRef, useState, useEffect } from "react";
+import React, { useRef, useState, useEffect, useCallback } from "react";
 import {
   Send,
   Square,
   Image as ImageIcon,
   Brain,
   X,
+  UploadCloud,
 } from "lucide-react";
 import { ChatImage } from "../types";
 
@@ -25,6 +26,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
 }) => {
   const [text, setText] = useState("");
   const [images, setImages] = useState<ChatImage[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -34,10 +36,90 @@ export const ChatInput: React.FC<ChatInputProps> = ({
       textareaRef.current.style.height = "auto";
       textareaRef.current.style.height = `${Math.min(
         textareaRef.current.scrollHeight,
-        180
+        200
       )}px`;
     }
   }, [text]);
+
+  const addImageFiles = useCallback((files: FileList | File[]) => {
+    Array.from(files).forEach((file) => {
+      if (!file.type.startsWith("image/")) return;
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64String = reader.result as string;
+        setImages((prev) => [
+          ...prev,
+          {
+            id: Math.random().toString(36).substring(2, 9),
+            data: base64String,
+            mimeType: file.type,
+            name: file.name || `Pasted_Image_${Date.now()}`,
+            size: file.size,
+          },
+        ]);
+      };
+      reader.readAsDataURL(file);
+    });
+  }, []);
+
+  // Handle Clipboard Paste (Ctrl+V / Cmd+V / Screenshot)
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const clipboardData = e.clipboardData;
+    if (!clipboardData) return;
+
+    const imageFiles: File[] = [];
+
+    // Check items
+    if (clipboardData.items) {
+      for (let i = 0; i < clipboardData.items.length; i++) {
+        const item = clipboardData.items[i];
+        if (item.type.indexOf("image") !== -1) {
+          const file = item.getAsFile();
+          if (file) {
+            imageFiles.push(file);
+          }
+        }
+      }
+    }
+
+    // Check files
+    if (clipboardData.files && clipboardData.files.length > 0) {
+      for (let i = 0; i < clipboardData.files.length; i++) {
+        const file = clipboardData.files[i];
+        if (file.type.startsWith("image/") && !imageFiles.includes(file)) {
+          imageFiles.push(file);
+        }
+      }
+    }
+
+    if (imageFiles.length > 0) {
+      addImageFiles(imageFiles);
+    }
+  };
+
+  // Drag and drop handlers
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      addImageFiles(e.dataTransfer.files);
+    }
+  };
 
   const handleSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -61,27 +143,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
-
-    Array.from(files).forEach((file) => {
-      if (!file.type.startsWith("image/")) return;
-
-      const reader = new FileReader();
-      reader.onload = () => {
-        const base64String = reader.result as string;
-        setImages((prev) => [
-          ...prev,
-          {
-            id: Math.random().toString(36).substring(2, 9),
-            data: base64String,
-            mimeType: file.type,
-            name: file.name,
-            size: file.size,
-          },
-        ]);
-      };
-      reader.readAsDataURL(file);
-    });
-
+    addImageFiles(files);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -92,12 +154,33 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   };
 
   return (
-    <div className="relative mx-auto w-full max-w-4xl px-4 pb-4 bg-white">
+    <div
+      className="relative mx-auto w-full max-w-4xl px-4 pb-4 bg-white"
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {/* Drag & Drop Visual Overlay */}
+      {isDragging && (
+        <div className="absolute inset-x-4 inset-y-0 z-30 flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-blue-500 bg-blue-50/95 backdrop-blur-xs transition-all">
+          <UploadCloud className="h-10 w-10 text-blue-600 animate-bounce" />
+          <p className="mt-2 text-sm font-bold text-blue-900">
+            Thả hình ảnh vào đây để tải lên
+          </p>
+          <p className="text-xs text-blue-600">
+            Hỗ trợ dán ảnh (Ctrl+V) hoặc kéo thả trực tiếp
+          </p>
+        </div>
+      )}
+
       {/* Uploaded image previews */}
       {images.length > 0 && (
-        <div className="mb-2 flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2 shadow-xs">
+        <div className="mb-2 flex flex-wrap items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 p-2.5 shadow-xs">
           {images.map((img) => (
-            <div key={img.id} className="group relative h-16 w-16 overflow-hidden rounded-lg border border-slate-300 bg-white">
+            <div
+              key={img.id}
+              className="group relative h-16 w-16 overflow-hidden rounded-lg border border-slate-300 bg-white shadow-xs"
+            >
               <img
                 src={img.data}
                 alt={img.name}
@@ -107,27 +190,32 @@ export const ChatInput: React.FC<ChatInputProps> = ({
               <button
                 type="button"
                 onClick={() => handleRemoveImage(img.id)}
-                className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-slate-900/80 text-white transition-opacity group-hover:opacity-100"
+                title="Xóa ảnh"
+                className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-slate-900/80 text-white transition-opacity hover:bg-red-600"
               >
                 <X className="h-3 w-3" />
               </button>
             </div>
           ))}
+          <div className="text-[11px] text-slate-500 pl-1">
+            Đã đính kèm {images.length} hình ảnh (bạn có thể dán tiếp bằng Ctrl+V)
+          </div>
         </div>
       )}
 
       {/* Input container */}
-      <div className="relative overflow-hidden rounded-2xl border border-slate-300 bg-white shadow-sm transition-all focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20">
+      <div className="relative overflow-hidden rounded-2xl border border-slate-300 bg-white shadow-sm transition-all focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 hover:border-slate-400">
         <textarea
           ref={textareaRef}
           id="chat-input-textarea"
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
           placeholder={
             enableThinking
-              ? "Đặt câu hỏi phức tạp (chế độ suy luận sâu High Thinking đang kích hoạt)..."
-              : "Hỏi Gemini 3.6 Flash bất kỳ điều gì hoặc tải ảnh lên để phân tích..."
+              ? "Đặt câu hỏi phức tạp (chế độ suy luận sâu High Thinking đang kích hoạt)... Bạn có thể dán ảnh trực tiếp (Ctrl+V)"
+              : "Hỏi Gemini bất kỳ điều gì hoặc dán ảnh trực tiếp (Ctrl+V) để phân tích..."
           }
           rows={1}
           className="max-h-48 w-full resize-none bg-transparent px-4 pt-3.5 pb-12 text-sm text-slate-900 placeholder-slate-400 focus:outline-none"
@@ -152,11 +240,11 @@ export const ChatInput: React.FC<ChatInputProps> = ({
               type="button"
               id="btn-attach-image"
               onClick={() => fileInputRef.current?.click()}
-              title="Đính kèm hình ảnh để Gemini 3.6 Flash phân tích"
-              className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-100"
+              title="Đính kèm hoặc Dán hình ảnh (Ctrl+V) để Gemini phân tích"
+              className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-100 active:scale-95"
             >
               <ImageIcon className="h-4 w-4 text-blue-600" />
-              <span className="hidden sm:inline">Thêm ảnh</span>
+              <span className="hidden sm:inline">Tải / Dán ảnh</span>
             </button>
 
             {/* Quick High Thinking toggle */}
@@ -183,7 +271,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                 id="btn-stop-stream"
                 onClick={onStop}
                 title="Dừng phản hồi"
-                className="flex h-8 items-center gap-1.5 rounded-xl bg-slate-900 px-3 text-xs font-semibold text-white shadow-xs hover:bg-slate-800"
+                className="flex h-8 items-center gap-1.5 rounded-xl bg-slate-900 px-3 text-xs font-semibold text-white shadow-xs hover:bg-slate-800 active:scale-95"
               >
                 <Square className="h-3.5 w-3.5 fill-current" />
                 <span>Dừng</span>
@@ -206,10 +294,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
 
       <div className="mt-1.5 flex items-center justify-between px-1 text-[11px] text-slate-400">
         <span>
-          Mô hình:{" "}
-          <strong className="font-semibold text-slate-600">
-            {enableThinking ? "High Thinking (Suy luận sâu)" : "Gemini 3.6 Flash"}
-          </strong>
+          Hỗ trợ dán ảnh chụp màn hình <strong className="font-semibold text-slate-600">(Ctrl + V)</strong> hoặc kéo thả
         </span>
         <span className="hidden sm:inline">Shift + Enter để xuống dòng</span>
       </div>

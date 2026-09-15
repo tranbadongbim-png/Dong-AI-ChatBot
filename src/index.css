@@ -4,3 +4,59 @@ body {
   background-color: #f8fafc;
   color: #0f172a;
 }
+
+@keyframes geminiShimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.gemini-thinking-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(224, 231, 255, 0.3) 0%,
+    rgba(199, 210, 254, 0.8) 50%,
+    rgba(224, 231, 255, 0.3) 100%
+  );
+  background-size: 200% 100%;
+  animation: geminiShimmer 2s infinite ease-in-out;
+}
+
+.gemini-thinking-border {
+  background: linear-gradient(
+    90deg,
+    #3b82f6,
+    #8b5cf6,
+    #ec4899,
+    #3b82f6
+  );
+  background-size: 300% 100%;
+  animation: geminiShimmer 3s infinite linear;
+}
+
+@keyframes barWave {
+  0%, 100% {
+    transform: scaleY(0.4);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scaleY(1.2);
+    opacity: 1;
+  }
+}
+
+.wave-bar-1 {
+  animation: barWave 1.2s infinite ease-in-out 0.1s;
+}
+.wave-bar-2 {
+  animation: barWave 1.2s infinite ease-in-out 0.25s;
+}
+.wave-bar-3 {
+  animation: barWave 1.2s infinite ease-in-out 0.4s;
+}
+.wave-bar-4 {
+  animation: barWave 1.2s infinite ease-in-out 0.55s;
+}
