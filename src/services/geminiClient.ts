@@ -247,13 +247,21 @@ async function streamDirectGemini(params: StreamChatParams) {
       });
     }
   } catch (err: any) {
-    // Fallback smoothly to gemini-3.6-flash if requested model hits quota / unavailable
-    if (targetModel !== "gemini-3.6-flash") {
-      const fallbackReason = "Đã tự động chuyển sang Gemini 3.6 Flash để đảm bảo kết nối ổn định.";
+    // Fallback smoothly to gemini-3.6-flash without failing search tool if requested model hits quota / unavailable
+    try {
+      const fallbackConfig: any = {
+        systemInstruction: getRealtimeSystemInstruction(systemInstruction),
+      };
+      if (enableThinking) {
+        fallbackConfig.thinkingConfig = {
+          thinkingLevel: ThinkingLevel.HIGH,
+        };
+      }
+
       const streamFallback = await ai.models.generateContentStream({
         model: "gemini-3.6-flash",
         contents,
-        config: configPayload,
+        config: fallbackConfig,
       });
 
       for await (const chunk of streamFallback) {
@@ -273,34 +281,15 @@ async function streamDirectGemini(params: StreamChatParams) {
           textChunk = chunk.text;
         }
 
-        const groundingMetadata = chunk.candidates?.[0]?.groundingMetadata;
-        let groundingSources: GroundingChunk[] | undefined;
-        let webSearchQueries: string[] | undefined;
-
-        if (groundingMetadata?.groundingChunks && Array.isArray(groundingMetadata.groundingChunks)) {
-          groundingSources = groundingMetadata.groundingChunks
-            .map((c: any) => ({
-              title: c.web?.title || c.title || "Trang web",
-              uri: c.web?.uri || c.uri || "",
-            }))
-            .filter((s: any) => s.uri);
-        }
-
-        if (groundingMetadata?.webSearchQueries && Array.isArray(groundingMetadata.webSearchQueries)) {
-          webSearchQueries = groundingMetadata.webSearchQueries;
-        }
-
         onChunk({
           text: textChunk,
           thought: thoughtChunk,
           model: "gemini-3.6-flash",
-          fallbackReason,
-          groundingSources: groundingSources && groundingSources.length > 0 ? groundingSources : undefined,
-          webSearchQueries: webSearchQueries && webSearchQueries.length > 0 ? webSearchQueries : undefined,
+          fallbackReason: "Đã tự động kết nối qua kênh Gemini 3.6 Flash để đảm bảo thông suốt.",
         });
       }
-    } else {
-      throw new Error(parseClientError(err));
+    } catch (finalErr: any) {
+      throw new Error(parseClientError(finalErr));
     }
   }
 }

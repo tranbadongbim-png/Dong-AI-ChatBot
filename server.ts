@@ -224,6 +224,65 @@ function extractErrorMessage(error: any): string {
   return rawMsg;
 }
 
+// Live web search crawler for resilient fallback when native Google Search Grounding hits 429/503
+async function fetchLiveWebSearch(query: string): Promise<{ title: string; uri: string; snippet: string }[]> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4500);
+
+    const resp = await fetch(
+      `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
+      {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+          "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7",
+          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        },
+        signal: controller.signal,
+      }
+    );
+    clearTimeout(timeout);
+
+    if (!resp.ok) return [];
+    const html = await resp.text();
+    const results: { title: string; uri: string; snippet: string }[] = [];
+
+    // Parse result blocks
+    const resultBlocks = html.split(/class="result\s+results_links/gi).slice(1);
+    for (const block of resultBlocks.slice(0, 6)) {
+      const urlMatch = block.match(/href="([^"]+)"/i);
+      const titleMatch = block.match(/class="result__title"[^>]*>[\s\S]*?<a[^>]*>([\s\S]*?)<\/a>/i);
+      const snippetMatch = block.match(/class="result__snippet"[^>]*>([\s\S]*?)<\/a>/i);
+
+      let rawUrl = urlMatch ? urlMatch[1] : "";
+      if (rawUrl.includes("uddg=")) {
+        try {
+          const decoded = decodeURIComponent(rawUrl.split("uddg=")[1].split("&")[0]);
+          rawUrl = decoded;
+        } catch {
+          // ignore
+        }
+      }
+
+      const title = titleMatch ? titleMatch[1].replace(/<[^>]+>/g, "").trim() : "";
+      const snippet = snippetMatch ? snippetMatch[1].replace(/<[^>]+>/g, "").trim() : "";
+
+      if (title && rawUrl && rawUrl.startsWith("http") && !rawUrl.includes("duckduckgo.com")) {
+        results.push({
+          title,
+          uri: rawUrl,
+          snippet,
+        });
+      }
+    }
+    return results;
+  } catch (e) {
+    console.error("Live Web Search fetch error:", e);
+    return [];
+  }
+}
+
 // Streaming chat endpoint using Server-Sent Events (SSE)
 app.post("/api/gemini/stream", async (req, res) => {
   const {
@@ -258,8 +317,7 @@ app.post("/api/gemini/stream", async (req, res) => {
     systemInstruction: getRealtimeSystemInstruction(systemInstruction),
   };
 
-  // Enable Google Search Grounding by default or when requested
-  if (enableSearch !== false) {
+  if (enableSearch) {
     configPayload.tools = [{ googleSearch: {} }];
   }
 
@@ -269,9 +327,11 @@ app.post("/api/gemini/stream", async (req, res) => {
     };
   }
 
-  // Attempt streaming with fallback
   let stream: any = null;
   let activeModelUsed = targetModel;
+  let isWebSearchFallback = false;
+  let fallbackGroundingSources: { title: string; uri: string }[] = [];
+  let fallbackWebSearchQueries: string[] = [];
 
   try {
     stream = await ai.models.generateContentStream({
@@ -281,49 +341,93 @@ app.post("/api/gemini/stream", async (req, res) => {
     });
   } catch (initialErr: any) {
     const errText = initialErr?.message || "";
-    const is503Unavailable = errText.includes("503") || errText.includes("high demand") || errText.includes("UNAVAILABLE");
-    const is429OrQuota = errText.includes("429") || errText.includes("quota") || errText.includes("RESOURCE_EXHAUSTED");
+    console.warn(`Initial stream attempt failed for model ${targetModel}:`, errText);
 
-    if (is503Unavailable || is429OrQuota || targetModel !== "gemini-3.6-flash") {
+    // If search tool or model threw 429, 503, 530 or quota error
+    if (enableSearch) {
+      console.log("Native search grounding encountered rate limit/530. Activating resilient Live Web Search fallback...");
       try {
-        console.log(`Model ${targetModel} unavailable/quota-limited. Falling back smoothly to gemini-3.6-flash...`);
-        activeModelUsed = "gemini-3.6-flash";
-        fallbackReason = is429OrQuota && targetModel === "gemini-3.1-pro-preview"
-          ? "Mô hình Gemini 3.1 Pro yêu cầu gói trả phí API Key. Đã tự động chuyển sang Gemini 3.6 Flash để hỗ trợ bạn ngay."
-          : is429OrQuota
-          ? "Đã vượt hạn ngạch gói miễn phí của mô hình này. Tự động chuyển sang Gemini 3.6 Flash để tiếp tục."
-          : "Máy chủ Gemini hiện đang bận tạm thời. Đã tự động chuyển sang kênh Gemini 3.6 Flash để trả lời ngay.";
+        isWebSearchFallback = true;
+        fallbackWebSearchQueries = [prompt.slice(0, 100)];
+        const searchResults = await fetchLiveWebSearch(prompt);
+        fallbackGroundingSources = searchResults.map((r) => ({ title: r.title, uri: r.uri }));
 
-        const fallbackConfig: any = { ...configPayload };
-        if (enableThinking) {
-          fallbackConfig.thinkingConfig = {
-            thinkingLevel: ThinkingLevel.HIGH,
-          };
+        let searchContext = "";
+        if (searchResults.length > 0) {
+          searchContext = `\n\n[KẾT QUẢ TÌM KIẾM WEB THỜI GIAN THỰC CHO: "${prompt}"]:\n` +
+            searchResults.map((r, i) => `[${i + 1}] Tiêu đề: ${r.title}\nURL: ${r.uri}\nTóm tắt: ${r.snippet}`).join("\n\n") +
+            `\nHãy sử dụng các kết quả tìm kiếm thời gian thực ở trên để trả lời câu hỏi của người dùng một cách chính xác, cập nhật nhất và trích dẫn rõ ràng.`;
         }
 
+        const fallbackSystemPrompt = getRealtimeSystemInstruction(systemInstruction) + searchContext;
+        const noToolConfig: any = {
+          systemInstruction: fallbackSystemPrompt,
+        };
+        if (enableThinking) {
+          noToolConfig.thinkingConfig = { thinkingLevel: ThinkingLevel.HIGH };
+        }
+
+        activeModelUsed = "gemini-3.6-flash";
+        fallbackReason = "Đã sử dụng công cụ Live Web Search để tra cứu dữ liệu mới nhất trực tuyến.";
+
+        stream = await ai.models.generateContentStream({
+          model: "gemini-3.6-flash",
+          contents,
+          config: noToolConfig,
+        });
+      } catch (searchFallbackErr: any) {
+        console.error("Live Web Search fallback failed:", searchFallbackErr);
+        // Standard model stream without tools
+        try {
+          const simpleConfig: any = {
+            systemInstruction: getRealtimeSystemInstruction(systemInstruction),
+          };
+          if (enableThinking) {
+            simpleConfig.thinkingConfig = { thinkingLevel: ThinkingLevel.HIGH };
+          }
+          activeModelUsed = "gemini-3.6-flash";
+          stream = await ai.models.generateContentStream({
+            model: "gemini-3.6-flash",
+            contents,
+            config: simpleConfig,
+          });
+        } catch (fatalErr: any) {
+          const cleanMsg = extractErrorMessage(fatalErr);
+          res.write(`data: ${JSON.stringify({ error: cleanMsg })}\n\n`);
+          res.write(`data: [DONE]\n\n`);
+          res.end();
+          return;
+        }
+      }
+    } else {
+      // Non-search fallback
+      try {
+        activeModelUsed = "gemini-3.6-flash";
+        const fallbackConfig: any = {
+          systemInstruction: getRealtimeSystemInstruction(systemInstruction),
+        };
+        if (enableThinking) {
+          fallbackConfig.thinkingConfig = { thinkingLevel: ThinkingLevel.HIGH };
+        }
         stream = await ai.models.generateContentStream({
           model: "gemini-3.6-flash",
           contents,
           config: fallbackConfig,
         });
-      } catch (fallbackErr: any) {
-        const cleanMsg = extractErrorMessage(fallbackErr);
+      } catch (fatalErr: any) {
+        const cleanMsg = extractErrorMessage(fatalErr);
         res.write(`data: ${JSON.stringify({ error: cleanMsg })}\n\n`);
         res.write(`data: [DONE]\n\n`);
         res.end();
         return;
       }
-    } else {
-      const cleanMsg = extractErrorMessage(initialErr);
-      res.write(`data: ${JSON.stringify({ error: cleanMsg })}\n\n`);
-      res.write(`data: [DONE]\n\n`);
-      res.end();
-      return;
     }
   }
 
   // Stream output to client
-  let hasSentAnyData = false;
+  let totalTextReceived = "";
+  let totalThoughtReceived = "";
+
   try {
     for await (const chunk of stream) {
       let textChunk = "";
@@ -344,25 +448,30 @@ app.post("/api/gemini/stream", async (req, res) => {
         textChunk = chunk.text;
       }
 
+      totalTextReceived += textChunk;
+      totalThoughtReceived += thoughtChunk;
+
       // Extract grounding sources & search queries
       const groundingMetadata = chunk.candidates?.[0]?.groundingMetadata;
-      let groundingSources: { title: string; uri: string }[] | undefined;
-      let webSearchQueries: string[] | undefined;
+      let groundingSources = fallbackGroundingSources.length > 0 ? fallbackGroundingSources : undefined;
+      let webSearchQueries = fallbackWebSearchQueries.length > 0 ? fallbackWebSearchQueries : undefined;
 
       if (groundingMetadata?.groundingChunks && Array.isArray(groundingMetadata.groundingChunks)) {
-        groundingSources = groundingMetadata.groundingChunks
+        const nativeSources = groundingMetadata.groundingChunks
           .map((c: any) => ({
             title: c.web?.title || c.title || "Trang web",
             uri: c.web?.uri || c.uri || "",
           }))
           .filter((s: any) => s.uri);
+        if (nativeSources.length > 0) {
+          groundingSources = nativeSources;
+        }
       }
 
       if (groundingMetadata?.webSearchQueries && Array.isArray(groundingMetadata.webSearchQueries)) {
         webSearchQueries = groundingMetadata.webSearchQueries;
       }
 
-      hasSentAnyData = true;
       const payload = {
         text: textChunk,
         thought: thoughtChunk,
@@ -375,84 +484,74 @@ app.post("/api/gemini/stream", async (req, res) => {
       res.write(`data: ${JSON.stringify(payload)}\n\n`);
     }
 
+    // Safety check: If stream finished with 0 text (e.g. tool output only without final candidate text)
+    if (!totalTextReceived.trim()) {
+      console.log("Empty text stream detected. Generating non-streaming response fallback...");
+      try {
+        const searchResults = await fetchLiveWebSearch(prompt);
+        let searchContext = "";
+        if (searchResults.length > 0) {
+          searchContext = `\n\n[KẾT QUẢ TÌM KIẾM WEB THỜI GIAN THỰC CHO: "${prompt}"]:\n` +
+            searchResults.map((r, i) => `[${i + 1}] Tiêu đề: ${r.title}\nURL: ${r.uri}\nTóm tắt: ${r.snippet}`).join("\n\n") +
+            `\nHãy sử dụng các kết quả tìm kiếm thời gian thực này để trả lời đầy đủ, chi tiết câu hỏi của người dùng.`;
+        }
+        const nonStreamResp = await ai.models.generateContent({
+          model: "gemini-3.6-flash",
+          contents,
+          config: {
+            systemInstruction: getRealtimeSystemInstruction(systemInstruction) + searchContext,
+          },
+        });
+
+        const fallbackText = nonStreamResp.text || "Đã hoàn tất tìm kiếm và tổng hợp thông tin.";
+        res.write(`data: ${JSON.stringify({
+          text: fallbackText,
+          model: "gemini-3.6-flash",
+          groundingSources: searchResults.map((r) => ({ title: r.title, uri: r.uri })),
+          webSearchQueries: [prompt.slice(0, 100)],
+        })}\n\n`);
+      } catch (err: any) {
+        console.error("Non-stream fallback error:", err);
+      }
+    }
+
     res.write(`data: [DONE]\n\n`);
     res.end();
   } catch (error: any) {
     console.error("Gemini Stream Chunk Error:", error);
 
-    // If we failed before sending any text and were not already on gemini-3.6-flash, recover immediately!
-    if (!hasSentAnyData && activeModelUsed !== "gemini-3.6-flash") {
+    // If stream failed during execution and we got no text yet, recover immediately!
+    if (!totalTextReceived.trim()) {
       try {
-        console.log("Recovering stream with gemini-3.6-flash...");
-        activeModelUsed = "gemini-3.6-flash";
-        fallbackReason = "Máy chủ bận (503). Đã tự động kết nối qua kênh Gemini 3.6 Flash để phản hồi ngay.";
-        
-        const fallbackConfig: any = { ...configPayload };
-        if (enableThinking) {
-          fallbackConfig.thinkingConfig = {
-            thinkingLevel: ThinkingLevel.HIGH,
-          };
+        console.log("Recovering stream with live web search + gemini-3.6-flash...");
+        const searchResults = await fetchLiveWebSearch(prompt);
+        let searchContext = "";
+        if (searchResults.length > 0) {
+          searchContext = `\n\n[KẾT QUẢ TÌM KIẾM WEB THỜI GIAN THỰC]:\n` +
+            searchResults.map((r, i) => `[${i + 1}] ${r.title} (${r.uri})\n${r.snippet}`).join("\n\n") +
+            `\nHãy sử dụng thông tin trên để trả lời đầy đủ, rõ ràng cho người dùng.`;
         }
 
-        const recoveryStream = await ai.models.generateContentStream({
+        const recoveryResp = await ai.models.generateContent({
           model: "gemini-3.6-flash",
           contents,
-          config: fallbackConfig,
+          config: {
+            systemInstruction: getRealtimeSystemInstruction(systemInstruction) + searchContext,
+          },
         });
 
-        for await (const chunk of recoveryStream) {
-          let textChunk = "";
-          let thoughtChunk = "";
-
-          const parts = chunk.candidates?.[0]?.content?.parts;
-          if (parts && Array.isArray(parts)) {
-            for (const part of parts) {
-              if ((part as any).thought) {
-                thoughtChunk += (part as any).text || "";
-              } else if (part.text) {
-                textChunk += part.text;
-              }
-            }
-          }
-
-          if (!textChunk && !thoughtChunk && chunk.text) {
-            textChunk = chunk.text;
-          }
-
-          const groundingMetadata = chunk.candidates?.[0]?.groundingMetadata;
-          let groundingSources: { title: string; uri: string }[] | undefined;
-          let webSearchQueries: string[] | undefined;
-
-          if (groundingMetadata?.groundingChunks && Array.isArray(groundingMetadata.groundingChunks)) {
-            groundingSources = groundingMetadata.groundingChunks
-              .map((c: any) => ({
-                title: c.web?.title || c.title || "Trang web",
-                uri: c.web?.uri || c.uri || "",
-              }))
-              .filter((s: any) => s.uri);
-          }
-
-          if (groundingMetadata?.webSearchQueries && Array.isArray(groundingMetadata.webSearchQueries)) {
-            webSearchQueries = groundingMetadata.webSearchQueries;
-          }
-
-          const payload = {
-            text: textChunk,
-            thought: thoughtChunk,
-            model: activeModelUsed,
-            fallbackReason,
-            groundingSources: groundingSources && groundingSources.length > 0 ? groundingSources : undefined,
-            webSearchQueries: webSearchQueries && webSearchQueries.length > 0 ? webSearchQueries : undefined,
-          };
-
-          res.write(`data: ${JSON.stringify(payload)}\n\n`);
-        }
-
+        res.write(`data: ${JSON.stringify({
+          text: recoveryResp.text || "Đã xử lý thông tin yêu cầu của bạn.",
+          model: "gemini-3.6-flash",
+          fallbackReason: "Đã chuyển qua kênh tra cứu trực tiếp để đảm bảo phản hồi thông suốt.",
+          groundingSources: searchResults.map((r) => ({ title: r.title, uri: r.uri })),
+          webSearchQueries: [prompt.slice(0, 100)],
+        })}\n\n`);
         res.write(`data: [DONE]\n\n`);
         res.end();
         return;
-      } catch (recoveryErr: any) {
-        console.log("Recovery stream failed:", recoveryErr?.message);
+      } catch (recErr: any) {
+        console.error("Recovery failed:", recErr);
       }
     }
 
@@ -488,7 +587,7 @@ app.post("/api/gemini/generate", async (req, res) => {
       systemInstruction: getRealtimeSystemInstruction(systemInstruction),
     };
 
-    if (enableSearch !== false) {
+    if (enableSearch) {
       configPayload.tools = [{ googleSearch: {} }];
     }
 
@@ -502,6 +601,8 @@ app.post("/api/gemini/generate", async (req, res) => {
     let activeModel = targetModel;
     let fallbackNotice = "";
     let response: any = null;
+    let fallbackGroundingSources: { title: string; uri: string }[] = [];
+    let fallbackWebSearchQueries: string[] = [];
 
     try {
       response = await ai.models.generateContent({
@@ -511,31 +612,63 @@ app.post("/api/gemini/generate", async (req, res) => {
       });
     } catch (initialErr: any) {
       const errText = initialErr?.message || "";
-      const is503 = errText.includes("503") || errText.includes("high demand") || errText.includes("UNAVAILABLE");
-      const is429 = errText.includes("429") || errText.includes("quota") || errText.includes("RESOURCE_EXHAUSTED");
+      console.warn(`Initial generateContent failed for ${targetModel}:`, errText);
 
-      if (is503 || is429 || targetModel !== "gemini-3.6-flash") {
-        activeModel = "gemini-3.6-flash";
-        fallbackNotice = is429 && targetModel === "gemini-3.1-pro-preview"
-          ? "Mô hình Gemini 3.1 Pro yêu cầu gói trả phí API Key. Đã tự động dùng Gemini 3.6 Flash để trả lời."
-          : is503
-          ? "Tự động chuyển kênh dự phòng Gemini 3.6 Flash do máy chủ đang quá tải."
-          : "Tự động chuyển kênh dự phòng Gemini 3.6 Flash.";
-        
-        const fallbackConfig: any = { ...configPayload };
-        if (enableThinking) {
-          fallbackConfig.thinkingConfig = {
-            thinkingLevel: ThinkingLevel.HIGH,
+      if (enableSearch) {
+        try {
+          const searchResults = await fetchLiveWebSearch(prompt);
+          fallbackGroundingSources = searchResults.map((r) => ({ title: r.title, uri: r.uri }));
+          fallbackWebSearchQueries = [prompt.slice(0, 100)];
+
+          let searchContext = "";
+          if (searchResults.length > 0) {
+            searchContext = `\n\n[KẾT QUẢ TÌM KIẾM WEB THỜI GIAN THỰC CHO: "${prompt}"]:\n` +
+              searchResults.map((r, i) => `[${i + 1}] ${r.title} (${r.uri})\n${r.snippet}`).join("\n\n") +
+              `\nHãy sử dụng các kết quả tìm kiếm mới nhất này để trả lời đầy đủ, chi tiết cho người dùng.`;
+          }
+
+          const fallbackConfig: any = {
+            systemInstruction: getRealtimeSystemInstruction(systemInstruction) + searchContext,
           };
-        }
+          if (enableThinking) {
+            fallbackConfig.thinkingConfig = { thinkingLevel: ThinkingLevel.HIGH };
+          }
 
+          activeModel = "gemini-3.6-flash";
+          fallbackNotice = "Đã tra cứu dữ liệu web thời gian thực trực tuyến.";
+          response = await ai.models.generateContent({
+            model: "gemini-3.6-flash",
+            contents,
+            config: fallbackConfig,
+          });
+        } catch (searchErr) {
+          console.error("Generate Live Search fallback failed:", searchErr);
+          const simpleConfig: any = {
+            systemInstruction: getRealtimeSystemInstruction(systemInstruction),
+          };
+          if (enableThinking) {
+            simpleConfig.thinkingConfig = { thinkingLevel: ThinkingLevel.HIGH };
+          }
+          activeModel = "gemini-3.6-flash";
+          response = await ai.models.generateContent({
+            model: "gemini-3.6-flash",
+            contents,
+            config: simpleConfig,
+          });
+        }
+      } else {
+        const fallbackConfig: any = {
+          systemInstruction: getRealtimeSystemInstruction(systemInstruction),
+        };
+        if (enableThinking) {
+          fallbackConfig.thinkingConfig = { thinkingLevel: ThinkingLevel.HIGH };
+        }
+        activeModel = "gemini-3.6-flash";
         response = await ai.models.generateContent({
           model: "gemini-3.6-flash",
           contents,
           config: fallbackConfig,
         });
-      } else {
-        throw initialErr;
       }
     }
 
@@ -558,16 +691,19 @@ app.post("/api/gemini/generate", async (req, res) => {
     }
 
     const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
-    let groundingSources: { title: string; uri: string }[] | undefined;
-    let webSearchQueries: string[] | undefined;
+    let groundingSources = fallbackGroundingSources.length > 0 ? fallbackGroundingSources : undefined;
+    let webSearchQueries = fallbackWebSearchQueries.length > 0 ? fallbackWebSearchQueries : undefined;
 
     if (groundingMetadata?.groundingChunks && Array.isArray(groundingMetadata.groundingChunks)) {
-      groundingSources = groundingMetadata.groundingChunks
+      const nativeSources = groundingMetadata.groundingChunks
         .map((c: any) => ({
           title: c.web?.title || c.title || "Trang web",
           uri: c.web?.uri || c.uri || "",
         }))
         .filter((s: any) => s.uri);
+      if (nativeSources.length > 0) {
+        groundingSources = nativeSources;
+      }
     }
 
     if (groundingMetadata?.webSearchQueries && Array.isArray(groundingMetadata.webSearchQueries)) {

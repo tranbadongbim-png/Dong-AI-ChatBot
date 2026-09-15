@@ -345,7 +345,7 @@ export default function App() {
           msg.id === modelMessageId
             ? {
                 ...msg,
-                content: accumulatedText || "Đã nhận phản hồi từ Gemini.",
+                content: accumulatedText || "Không nhận được nội dung phản hồi từ mô hình. Vui lòng bấm thử lại.",
                 thoughtProcess: accumulatedThought,
                 groundingSources: latestGroundingSources || msg.groundingSources,
                 webSearchQueries: latestWebSearchQueries || msg.webSearchQueries,
