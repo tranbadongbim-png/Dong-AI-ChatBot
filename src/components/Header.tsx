@@ -1,5 +1,5 @@
 import React from "react";
-import { Brain, Sparkles, Plus, Trash2, Menu, Key } from "lucide-react";
+import { Brain, Sparkles, Plus, Trash2, Menu, Key, Cpu } from "lucide-react";
 import { GoogleUser } from "../types";
 
 interface HeaderProps {
@@ -53,14 +53,14 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <h1 className="text-base font-bold text-slate-900 whitespace-nowrap">
-                Gemini 3.6 Flash
+                Gemini AI Studio
               </h1>
               <span className="hidden sm:inline-flex shrink-0 whitespace-nowrap rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 border border-emerald-200">
                 Miễn phí &amp; Unlimited
               </span>
             </div>
             <p className="hidden text-xs text-slate-500 sm:block whitespace-nowrap truncate">
-              Google Gemini 3.6 Flash - Tốc độ cao &amp; Ổn định nhất
+              Google Gemini Ecosystem - Đa mô hình thông minh
             </p>
           </div>
         </div>
@@ -68,6 +68,23 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Right side action controls */}
       <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+        {/* Model Selector Dropdown */}
+        <div className="relative hidden md:flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg px-2 h-8">
+          <Cpu className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+          <select
+            id="select-model-dropdown"
+            value={selectedModel}
+            onChange={(e) => onSelectModel(e.target.value)}
+            className="bg-transparent text-xs font-semibold text-slate-800 focus:outline-none cursor-pointer pr-1"
+            title="Chọn model Gemini"
+          >
+            <option value="gemini-3.6-flash">Gemini 3.6 Flash (Cân bằng &amp; Thông minh)</option>
+            <option value="gemini-flash-lite-latest">Gemini Flash Lite (Nhẹ, Cực nhanh &amp; Free)</option>
+            <option value="gemini-2.5-flash">Gemini 2.5 Flash (Tốc độ chuẩn)</option>
+            <option value="gemini-2.5-pro">Gemini 2.5 Pro (Suy luận &amp; Coding sâu)</option>
+          </select>
+        </div>
+
         {/* High Thinking Toggle */}
         <button
           id="btn-toggle-thinking"
@@ -84,7 +101,7 @@ export const Header: React.FC<HeaderProps> = ({
           }`}
         >
           <Brain className={`h-4 w-4 shrink-0 ${enableThinking ? "animate-pulse" : "text-amber-600"}`} />
-          <span className="hidden md:inline whitespace-nowrap">High Thinking</span>
+          <span className="hidden lg:inline whitespace-nowrap">High Thinking</span>
           <span className="text-[10px] opacity-90 whitespace-nowrap">
             {enableThinking ? "BẬT" : "TẮT"}
           </span>
@@ -124,7 +141,7 @@ export const Header: React.FC<HeaderProps> = ({
           }`}
         >
           <Key className="h-3.5 w-3.5 shrink-0" />
-          <span className="hidden lg:inline whitespace-nowrap">{hasApiKey ? "Custom Key" : "Cài đặt"}</span>
+          <span className="hidden xl:inline whitespace-nowrap">{hasApiKey ? "Custom Key" : "Cài đặt"}</span>
           {hasApiKey && (
             <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500 animate-pulse" />
           )}
@@ -152,14 +169,13 @@ export const Header: React.FC<HeaderProps> = ({
                 alt={currentUser.name}
                 className="h-5 w-5 rounded-full object-cover border border-emerald-300 shrink-0"
               />
-              <span className="hidden sm:inline max-w-[100px] truncate">
+              <span className="hidden sm:inline max-w-[90px] truncate">
                 {currentUser.name}
               </span>
               <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0" />
             </>
           ) : (
             <>
-              {/* Google G logo */}
               <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24">
                 <path
                   fill="#4285F4"
@@ -178,8 +194,7 @@ export const Header: React.FC<HeaderProps> = ({
                   d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                 />
               </svg>
-              <span className="hidden sm:inline whitespace-nowrap">Đăng nhập Google</span>
-              <span className="sm:hidden whitespace-nowrap">Google</span>
+              <span className="hidden sm:inline whitespace-nowrap">Đăng nhập</span>
             </>
           )}
         </button>
