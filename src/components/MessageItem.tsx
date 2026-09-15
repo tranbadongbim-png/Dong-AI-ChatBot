@@ -29,8 +29,12 @@ interface MessageItemProps {
 
 const getModelDisplayName = (modelId?: string) => {
   if (!modelId) return "Gemini 3.6 Flash";
-  if (modelId === "gemini-flash-lite-latest") return "Gemini Flash Lite";
+  if (modelId === "pyrevit-code-pro" || modelId === "pyrevit-code-specialist") return "⚡ pyRevit Pro Coder";
   if (modelId === "gemini-3.6-flash") return "Gemini 3.6 Flash";
+  if (modelId === "gemini-3.5-flash-lite") return "Gemini 3.5 Flash Lite";
+  if (modelId === "gemini-3.1-flash-lite" || modelId === "gemini-flash-lite-latest") return "Gemini Flash Lite";
+  if (modelId === "gemini-3.5-flash") return "Gemini 3.5 Flash";
+  if (modelId === "gemini-3.8-flash") return "Gemini 3.8 Flash";
   if (modelId === "gemini-2.5-flash") return "Gemini 2.5 Flash";
   if (modelId === "gemini-2.5-pro") return "Gemini 2.5 Pro";
   return modelId
@@ -327,7 +331,11 @@ export const MessageItem: React.FC<MessageItemProps> = ({
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-600 mt-0.5">
-                  Đang phân tích ngữ cảnh, kết nối dữ liệu mới nhất và tối ưu phản hồi...
+                  {message.groundingSources && message.groundingSources.length > 0
+                    ? "Đã tìm thấy thông tin mới nhất, đang tổng hợp câu trả lời..."
+                    : thinkingSeconds > 4
+                    ? "Đang tăng tốc kết nối mô hình tốc độ cao..."
+                    : "Đang phân tích ngữ cảnh, kết nối dữ liệu mới nhất và tối ưu phản hồi..."}
                 </p>
               </div>
             </div>

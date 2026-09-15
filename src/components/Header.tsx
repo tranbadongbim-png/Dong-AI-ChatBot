@@ -1,5 +1,5 @@
 import React from "react";
-import { Brain, Sparkles, Plus, Trash2, Menu, Key, Cpu, ChevronDown } from "lucide-react";
+import { Brain, Sparkles, Plus, Trash2, Menu, Key, Cpu, BookOpen } from "lucide-react";
 import { GoogleUser } from "../types";
 
 interface HeaderProps {
@@ -10,6 +10,8 @@ interface HeaderProps {
   onNewChat: () => void;
   onClearChat: () => void;
   onOpenSettings: () => void;
+  onOpenPyRevitContext: () => void;
+  pyRevitDocCount: number;
   onToggleSidebar: () => void;
   hasMessages: boolean;
   hasApiKey?: boolean;
@@ -25,12 +27,15 @@ export const Header: React.FC<HeaderProps> = ({
   onNewChat,
   onClearChat,
   onOpenSettings,
+  onOpenPyRevitContext,
+  pyRevitDocCount,
   onToggleSidebar,
   hasMessages,
   hasApiKey,
   currentUser,
   onOpenGoogleAuth,
 }) => {
+  const isPyRevitSelected = selectedModel === "pyrevit-code-pro" || selectedModel === "pyrevit-code-specialist";
   return (
     <header
       id="app-header"
@@ -79,10 +84,38 @@ export const Header: React.FC<HeaderProps> = ({
             className="bg-transparent text-xs font-semibold text-slate-800 focus:outline-none cursor-pointer pr-1 w-auto max-w-[130px] sm:max-w-[155px] truncate"
             title="Chọn model Gemini"
           >
-            <option value="gemini-3.6-flash">Gemini 3.6 Flash</option>
-            <option value="gemini-flash-lite-latest">Gemini Flash Lite</option>
+            <option value="gemini-3.6-flash">Gemini 3.6 Flash (Mặc định)</option>
+            <option value="pyrevit-code-pro">⚡ pyRevit Pro Coder (Free • Chuyên Revit API)</option>
+            <option value="gemini-3.5-flash-lite">Gemini 3.5 Flash Lite (Cực nhanh)</option>
+            <option value="gemini-3.1-flash-lite">Gemini Flash Lite (Bền bỉ)</option>
+            <option value="gemini-3.5-flash">Gemini 3.5 Flash (Cân bằng)</option>
+            <option value="gemini-3.8-flash">Gemini 3.8 Flash (Suy luận sâu)</option>
           </select>
         </div>
+
+        {/* PyRevit Pro Context Button */}
+        <button
+          id="btn-open-pyrevit-context"
+          onClick={onOpenPyRevitContext}
+          title="Cửa sổ Ngữ cảnh & Kho tri thức Google Drive cho pyRevit Pro Coder"
+          className={`relative flex items-center gap-1.5 rounded-lg px-2.5 h-8 text-xs font-semibold whitespace-nowrap shrink-0 transition-all ${
+            isPyRevitSelected
+              ? "bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-xs ring-1 ring-amber-300 animate-in fade-in"
+              : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+          }`}
+        >
+          <BookOpen className={`h-3.5 w-3.5 shrink-0 ${isPyRevitSelected ? "text-white" : "text-amber-600"}`} />
+          <span className="hidden sm:inline whitespace-nowrap">Kho tri thức pyRevit</span>
+          {pyRevitDocCount > 0 ? (
+            <span className="rounded-full bg-amber-900/40 text-amber-100 px-1.5 py-0.2 text-[10px] font-bold">
+              {pyRevitDocCount} file
+            </span>
+          ) : (
+            <span className="rounded-full bg-amber-100 text-amber-800 px-1.5 py-0.2 text-[9px] font-bold">
+              +Drive
+            </span>
+          )}
+        </button>
 
         {/* High Thinking Toggle */}
         <button
@@ -90,8 +123,8 @@ export const Header: React.FC<HeaderProps> = ({
           onClick={() => onToggleThinking(!enableThinking)}
           title={
             enableThinking
-              ? "Chế độ suy luận sâu đang bật"
-              : "Bật chế độ High Thinking để xử lý câu hỏi phức tạp"
+              ? "Chế độ High Thinking đang BẬT (Kích hoạt Gemini 3.8 Flash)"
+              : "Bật chế độ High Thinking (Kích hoạt Gemini 3.8 Flash)"
           }
           className={`relative flex items-center gap-1.5 rounded-lg px-2.5 h-8 text-xs font-semibold whitespace-nowrap shrink-0 transition-all ${
             enableThinking

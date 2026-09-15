@@ -50,7 +50,7 @@ export interface PresetPrompt {
   description: string;
   prompt: string;
   enableThinking: boolean;
-  model: "gemini-3.6-flash";
+  model: string;
   iconName: string;
 }
 
@@ -61,4 +61,25 @@ export interface GoogleUser {
   picture?: string;
   token?: string;
   isGoogleAccount?: boolean;
+}
+
+export interface PyRevitDocItem {
+  id: string;
+  name: string;
+  content: string;
+  size: number;
+  type: string;
+  source: "google_drive" | "file_upload" | "manual";
+  sourceUrl?: string;
+  updatedAt: number;
+  enabled: boolean;
+}
+
+export interface PyRevitContextConfig {
+  driveFolderUrl: string;
+  autoSync: boolean;
+  enforceFullReading: boolean;
+  customGuidelines: string;
+  documents: PyRevitDocItem[];
+  lastSyncedAt?: number;
 }

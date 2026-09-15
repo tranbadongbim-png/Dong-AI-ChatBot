@@ -6,16 +6,18 @@ import { ChatInput } from "./components/ChatInput";
 import { EmptyState } from "./components/EmptyState";
 import { SettingsModal } from "./components/SettingsModal";
 import { GoogleAuthModal } from "./components/GoogleAuthModal";
-import { ChatImage, ChatMessage, ChatSession, PresetPrompt, GoogleUser } from "./types";
+import { PyRevitContextModal } from "./components/PyRevitContextModal";
+import { ChatImage, ChatMessage, ChatSession, PresetPrompt, GoogleUser, PyRevitContextConfig } from "./types";
 import { sendChatMessage } from "./services/geminiClient";
 
 const STORAGE_KEY_PREFIX = "gemini_36_sessions_";
 const CURRENT_USER_KEY = "gemini_current_user_v1";
 const API_KEY_STORAGE = "gemini_custom_api_key_v1";
+const PYREVIT_CONFIG_STORAGE = "gemini_pyrevit_config_v1";
 
 function createNewSession(
   enableThinking: boolean,
-  model: string,
+  model: string = "gemini-3.6-flash",
   userId?: string,
   enableSearch: boolean = false
 ): ChatSession {
@@ -87,10 +89,37 @@ export default function App() {
       return "";
     }
   });
+
+  const [pyRevitConfig, setPyRevitConfig] = useState<PyRevitContextConfig>(() => {
+    try {
+      const saved = localStorage.getItem(PYREVIT_CONFIG_STORAGE);
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error("Failed to load pyRevit config", e);
+    }
+    return {
+      driveFolderUrl: "",
+      autoSync: false,
+      enforceFullReading: true,
+      customGuidelines: "",
+      documents: [],
+    };
+  });
+
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isGoogleAuthOpen, setIsGoogleAuthOpen] = useState<boolean>(false);
+  const [isPyRevitContextOpen, setIsPyRevitContextOpen] = useState<boolean>(false);
+
+  const handleSavePyRevitConfig = (newConfig: PyRevitContextConfig) => {
+    setPyRevitConfig(newConfig);
+    try {
+      localStorage.setItem(PYREVIT_CONFIG_STORAGE, JSON.stringify(newConfig));
+    } catch (e) {
+      console.error("Failed to save pyRevit config", e);
+    }
+  };
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -104,7 +133,15 @@ export default function App() {
   useEffect(() => {
     if (activeSession) {
       if (activeSession.model) {
-        const validModels = ["gemini-3.6-flash", "gemini-flash-lite-latest"];
+        const validModels = [
+          "gemini-3.6-flash",
+          "pyrevit-code-pro",
+          "gemini-3.5-flash-lite",
+          "gemini-3.1-flash-lite",
+          "gemini-3.5-flash",
+          "gemini-3.8-flash",
+          "gemini-flash-lite-latest",
+        ];
         const safeModel = validModels.includes(activeSession.model)
           ? activeSession.model
           : "gemini-3.6-flash";
@@ -132,9 +169,18 @@ export default function App() {
   // Thinking toggle handler
   const handleToggleThinking = (enabled: boolean) => {
     setEnableThinking(enabled);
+    if (enabled) {
+      setSelectedModel("gemini-3.8-flash");
+    }
     setSessions((prev) =>
       prev.map((s) =>
-        s.id === activeSessionId ? { ...s, enableThinking: enabled } : s
+        s.id === activeSessionId
+          ? {
+              ...s,
+              enableThinking: enabled,
+              ...(enabled ? { model: "gemini-3.8-flash" } : {}),
+            }
+          : s
       )
     );
   };
@@ -263,7 +309,10 @@ export default function App() {
       typeof forcedThinking === "boolean" ? forcedThinking : enableThinking;
     const isSearchMode =
       typeof forcedSearch === "boolean" ? forcedSearch : enableSearch;
-    const modelToUse = forcedModel || selectedModel || "gemini-3.6-flash";
+    // Khi bật High Thinking mode: kích hoạt Gemini 3.8 Flash; khi tắt: dùng mặc định 3.6 Flash
+    const modelToUse = isThinkingMode
+      ? "gemini-3.8-flash"
+      : (forcedModel || selectedModel || "gemini-3.6-flash");
 
     const userMessage: ChatMessage = {
       id: "msg_user_" + Date.now().toString(36),
@@ -291,6 +340,18 @@ export default function App() {
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
 
+    let accumulatedText = "";
+    let accumulatedThought = "";
+    let latestGroundingSources = undefined as any;
+    let latestWebSearchQueries = undefined as any;
+
+    // Client-side safety timeout: abort if no response starts within 25 seconds
+    const safetyTimeout = setTimeout(() => {
+      if (!accumulatedText) {
+        abortController.abort();
+      }
+    }, 25000);
+
     try {
       // Prepare history (prior messages excluding current new user turn)
       const history = messages.map((m) => ({
@@ -298,11 +359,6 @@ export default function App() {
         text: m.content,
         images: m.images,
       }));
-
-      let accumulatedText = "";
-      let accumulatedThought = "";
-      let latestGroundingSources = undefined as any;
-      let latestWebSearchQueries = undefined as any;
 
       await sendChatMessage({
         prompt,
@@ -312,6 +368,7 @@ export default function App() {
         enableSearch: isSearchMode,
         model: modelToUse,
         systemInstruction,
+        pyRevitContext: pyRevitConfig,
         customApiKey,
         signal: abortController.signal,
         onChunk: ({ text, thought, model, fallbackReason, groundingSources, webSearchQueries }) => {
@@ -361,8 +418,11 @@ export default function App() {
             msg.id === modelMessageId
               ? {
                   ...msg,
-                  content: msg.content + "\n\n*(Đã dừng tạo phản hồi)*",
+                  content:
+                    msg.content ||
+                    "Yêu cầu phản hồi quá lâu hoặc đã bị dừng. Hệ thống đã tự động bảo vệ để không làm gián đoạn trải nghiệm của bạn. Vui lòng bấm 'Tạo lại' để gửi lại.",
                   isStreaming: false,
+                  error: !msg.content,
                 }
               : msg
           )
@@ -384,6 +444,7 @@ export default function App() {
         );
       }
     } finally {
+      clearTimeout(safetyTimeout);
       setIsLoading(false);
       abortControllerRef.current = null;
     }
@@ -518,6 +579,8 @@ export default function App() {
           onClearChat={handleClearChat}
           onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
           onOpenSettings={() => setIsSettingsOpen(true)}
+          onOpenPyRevitContext={() => setIsPyRevitContextOpen(true)}
+          pyRevitDocCount={pyRevitConfig.documents ? pyRevitConfig.documents.filter((d) => d.enabled).length : 0}
           hasMessages={messages.length > 0}
           hasApiKey={Boolean(customApiKey)}
           currentUser={currentUser}
@@ -607,6 +670,13 @@ export default function App() {
             console.error("Failed to persist API key", e);
           }
         }}
+      />
+      {/* PyRevit Pro Coder Knowledge Base & Drive Context Modal */}
+      <PyRevitContextModal
+        isOpen={isPyRevitContextOpen}
+        onClose={() => setIsPyRevitContextOpen(false)}
+        config={pyRevitConfig}
+        onSaveConfig={handleSavePyRevitConfig}
       />
     </div>
   );

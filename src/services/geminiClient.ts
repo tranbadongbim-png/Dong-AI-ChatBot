@@ -9,6 +9,7 @@ export interface StreamChatParams {
   enableSearch?: boolean;
   model?: string;
   systemInstruction?: string;
+  pyRevitContext?: any;
   customApiKey?: string;
   onChunk: (chunk: {
     text: string;
@@ -220,6 +221,41 @@ async function clientFetchLiveWebSearch(query: string): Promise<{ title: string;
   }
 }
 
+const PYREVIT_SPECIALIST_INSTRUCTION = `
+Bạn là Chuyên gia Lập trình pyRevit & Autodesk Revit API hàng đầu (pyRevit Senior Developer & BIM Automation Specialist).
+Mô hình chuyên dụng này được tối ưu cho việc code Python trên nền tảng pyRevit, tốc độ phản hồi cực nhanh, miễn phí và không bị giới hạn hạn ngạch.
+
+Các nguyên tắc bắt buộc khi viết mã pyRevit:
+1. Cấu trúc mã pyRevit chuẩn:
+# -*- coding: utf-8 -*-
+__title__ = "Tên Công Cụ"
+__author__ = "BIM Developer"
+__doc__ = """Mô tả chức năng công cụ chi tiết."""
+
+from pyrevit import revit, DB, UI, script, forms
+doc = revit.doc
+uidoc = revit.uidoc
+app = revit.app
+
+2. Thư viện Autodesk Revit API & IronPython/CPython:
+- Import đầy đủ namespace cần thiết từ Autodesk.Revit.DB (FilteredElementCollector, BuiltInCategory, BuiltInParameter, Transaction, ElementId, XYZ, UnitUtils, v.v.).
+- Quản lý Transaction an toàn khi thay đổi Document:
+  with revit.Transaction("Tên tác vụ"):
+      # Các thay đổi Revit DB
+
+3. Thu thập đối tượng (FilteredElementCollector):
+- Luôn kết hợp WhereElementIsNotElementType() hoặc WhereElementIsElementType() để tối ưu bộ nhớ.
+- Lọc theo Category hoặc Class chuẩn xác:
+  FilteredElementCollector(doc).OfCategory(DB.BuiltInCategory.OST_Walls).WhereElementIsNotElementType().ToElements()
+
+4. Tương tác với người dùng qua pyRevit forms:
+- Sử dụng forms.alert(), forms.SelectFromList, forms.ask_for_string() khi cần giao diện.
+- In kết quả rõ ràng qua script.get_output().
+
+5. Phong cách phản hồi:
+- Cung cấp code Python hoàn chỉnh, chú thích tiếng Việt rõ ràng, giải thích cách triển khai trong extension.
+`;
+
 // Client-side direct Google Gemini SDK (for Cloudflare Pages / Static Hosting)
 async function streamDirectGemini(params: StreamChatParams) {
   const {
@@ -240,7 +276,25 @@ async function streamDirectGemini(params: StreamChatParams) {
 
   const ai = new GoogleGenAI({ apiKey: customApiKey });
   const contents = formatSdkContents(prompt, history, images);
-  const targetModel = "gemini-3.6-flash"; // Rock-solid verified model
+  const isPyRevitModel = model === "pyrevit-code-pro" || model === "pyrevit-code-specialist";
+  const preferredModel = model === "gemini-flash-lite-latest" ? "gemini-3.1-flash-lite" : (model || "gemini-3.6-flash");
+  
+  // Khi bật High Thinking: ưu tiên gemini-3.8-flash, nếu fail thì gọi gemini-3.6-flash, không hạ thêm model
+  // Khi chọn pyRevit: dùng các model coding cực nhanh, miễn phí, không giới hạn
+  // Khi High Thinking tắt: mặc định gemini-3.6-flash, nếu fail thì tự động chuyển sang Flash Lite để luôn có phản hồi!
+  let candidateModels: string[];
+  if (enableThinking) {
+    candidateModels = ["gemini-3.8-flash", "gemini-3.6-flash"];
+  } else if (isPyRevitModel) {
+    candidateModels = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.5-flash"];
+  } else {
+    candidateModels = [
+      preferredModel,
+      ...["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.5-flash"].filter(
+        (m) => m !== preferredModel
+      ),
+    ];
+  }
 
   let totalTextReceived = 0;
   let totalThoughtReceived = 0;
@@ -259,7 +313,7 @@ async function streamDirectGemini(params: StreamChatParams) {
     onChunk({
       text: textChunk,
       thought: thoughtChunk,
-      model: activeModel,
+      model: isPyRevitModel ? "pyrevit-code-pro" : activeModel,
       fallbackReason,
       groundingSources,
       webSearchQueries,
@@ -281,9 +335,8 @@ async function streamDirectGemini(params: StreamChatParams) {
       }
     }
 
-    const fallbackInstruction = getRealtimeSystemInstruction(
-      (systemInstruction ? systemInstruction + "\n" : "") + searchContext
-    );
+    const baseInstruction = (systemInstruction ? systemInstruction + "\n" : "") + (isPyRevitModel ? PYREVIT_SPECIALIST_INSTRUCTION + "\n" : "") + searchContext;
+    const fallbackInstruction = getRealtimeSystemInstruction(baseInstruction);
 
     const fallbackConfig: any = {
       systemInstruction: fallbackInstruction,
@@ -292,78 +345,92 @@ async function streamDirectGemini(params: StreamChatParams) {
       fallbackConfig.thinkingConfig = { thinkingLevel: ThinkingLevel.HIGH };
     }
 
-    const stream = await ai.models.generateContentStream({
-      model: targetModel,
-      contents,
-      config: fallbackConfig,
-    });
+    let activeModelUsed = candidateModels[0];
+    for (const candModel of candidateModels) {
+      try {
+        const stream = await ai.models.generateContentStream({
+          model: candModel,
+          contents,
+          config: fallbackConfig,
+        });
 
-    for await (const chunk of stream) {
-      let textChunk = "";
-      let thoughtChunk = "";
+        activeModelUsed = candModel;
+        for await (const chunk of stream) {
+          let textChunk = "";
+          let thoughtChunk = "";
 
-      const parts = chunk.candidates?.[0]?.content?.parts;
-      if (parts && Array.isArray(parts)) {
-        for (const part of parts) {
-          if ((part as any).thought) {
-            thoughtChunk += (part as any).text || "";
-          } else if (part.text) {
-            textChunk += part.text;
+          const parts = chunk.candidates?.[0]?.content?.parts;
+          if (parts && Array.isArray(parts)) {
+            for (const part of parts) {
+              if ((part as any).thought) {
+                thoughtChunk += (part as any).text || "";
+              } else if (part.text) {
+                textChunk += part.text;
+              }
+            }
           }
+          if (!textChunk && !thoughtChunk && chunk.text) {
+            textChunk = chunk.text;
+          }
+
+          handleChunkData(
+            textChunk,
+            thoughtChunk,
+            activeModelUsed,
+            candModel !== candidateModels[0] ? `Đã chuyển sang ${candModel} do mô hình chính quá tải.` : (webSources.length > 0 ? "Đã tra cứu dữ liệu web thời gian thực trực tuyến." : undefined),
+            webSources.length > 0 ? webSources : undefined,
+            webSources.length > 0 ? [prompt] : undefined
+          );
         }
-      }
-      if (!textChunk && !thoughtChunk && chunk.text) {
-        textChunk = chunk.text;
-      }
 
-      handleChunkData(
-        textChunk,
-        thoughtChunk,
-        targetModel,
-        webSources.length > 0 ? "Đã tra cứu dữ liệu web thời gian thực trực tuyến." : undefined,
-        webSources.length > 0 ? webSources : undefined,
-        webSources.length > 0 ? [prompt] : undefined
-      );
-    }
-
-    if (totalTextReceived > 0) {
-      return;
+        if (totalTextReceived > 0) {
+          return;
+        }
+      } catch (streamAttemptErr: any) {
+        console.warn(`Direct stream attempt for ${candModel} failed:`, streamAttemptErr?.message);
+      }
     }
   } catch (streamErr: any) {
     console.warn("Client streaming failed, attempting non-streaming generateContent fallback:", streamErr?.message);
   }
 
-  // Attempt 3: Non-streaming generateContent as ultimate guarantee
-  try {
-    const directResp = await ai.models.generateContent({
-      model: targetModel,
-      contents,
-      config: {
-        systemInstruction: getRealtimeSystemInstruction(systemInstruction),
-      },
-    });
+  // Attempt 3: Non-streaming generateContent as ultimate guarantee across candidate models
+  for (const candModel of candidateModels) {
+    try {
+      const directResp = await ai.models.generateContent({
+        model: candModel,
+        contents,
+        config: {
+          systemInstruction: getRealtimeSystemInstruction(systemInstruction),
+        },
+      });
 
-    let finalText = "";
-    const parts = directResp.candidates?.[0]?.content?.parts;
-    if (parts && Array.isArray(parts)) {
-      for (const p of parts) {
-        if (p.text) finalText += p.text;
+      let finalText = "";
+      const parts = directResp.candidates?.[0]?.content?.parts;
+      if (parts && Array.isArray(parts)) {
+        for (const p of parts) {
+          if (p.text) finalText += p.text;
+        }
       }
-    }
-    if (!finalText && directResp.text) {
-      finalText = directResp.text;
-    }
+      if (!finalText && directResp.text) {
+        finalText = directResp.text;
+      }
 
-    if (finalText) {
-      handleChunkData(finalText, "", targetModel, "Đã phản hồi qua kênh Gemini 3.6 Flash dự phòng.");
-      return;
+      if (finalText) {
+        handleChunkData(finalText, "", candModel, `Đã phản hồi qua kênh ${candModel} dự phòng.`);
+        return;
+      }
+    } catch (finalErr: any) {
+      console.warn(`Direct generateContent attempt for ${candModel} failed:`, finalErr?.message);
     }
-  } catch (finalErr: any) {
-    console.error("All direct Gemini client attempts failed:", finalErr);
-    throw new Error(parseClientError(finalErr));
   }
 
   if (totalTextReceived === 0) {
+    if (enableThinking) {
+      throw new Error(
+        "Không thể hoàn thành câu trả lời ở Chế độ High Thinking: Cả hai mô hình Gemini 3.8 Flash và Gemini 3.6 Flash đều không phản hồi (có thể do lỗi quá tải 503 hoặc giới hạn hạn ngạch 429). Hệ thống không hạ cấp sang các mô hình Flash Lite khác để đảm bảo chất lượng suy luận. Vui lòng thử lại sau giây lát hoặc tắt Chế độ High Thinking."
+      );
+    }
     throw new Error("Không nhận được nội dung từ Gemini API. Vui lòng kiểm tra lại API Key hoặc quota của tài khoản Google AI Studio.");
   }
 }
@@ -371,12 +438,13 @@ async function streamDirectGemini(params: StreamChatParams) {
 export async function sendChatMessage(params: StreamChatParams): Promise<void> {
   const { customApiKey, onChunk, signal } = params;
 
-  // 1. If user provided their own API key, directly use the Google Gemini SDK (works 100% on Cloudflare)
+  // 1. If user provided their own API key, directly use the Google Gemini SDK (works 100% on Cloudflare or custom quota)
   if (customApiKey && customApiKey.trim()) {
     return streamDirectGemini(params);
   }
 
-  // 2. Otherwise try backend Express /api/gemini/stream first
+  // 2. Otherwise use backend Express /api/gemini/stream
+  let response: Response;
   try {
     const payload = {
       prompt: params.prompt,
@@ -393,9 +461,10 @@ export async function sendChatMessage(params: StreamChatParams): Promise<void> {
       enableSearch: Boolean(params.enableSearch),
       model: params.model,
       systemInstruction: params.systemInstruction || undefined,
+      pyRevitContext: params.pyRevitContext || undefined,
     };
 
-    const response = await fetch("/api/gemini/stream", {
+    response = await fetch("/api/gemini/stream", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -403,63 +472,61 @@ export async function sendChatMessage(params: StreamChatParams): Promise<void> {
       body: JSON.stringify(payload),
       signal,
     });
-
-    // If server responds with 404 or 405 (Static hosting like Cloudflare Pages / Workers), prompt for API key
-    if (response.status === 404 || response.status === 405) {
-      throw new Error(
-        "Ứng dụng đang chạy trên máy chủ tĩnh (Cloudflare). Vui lòng bấm vào icon Cài đặt (⚙️) ở góc trên bên phải để nhập Gemini API Key của bạn."
-      );
-    }
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || `Yêu cầu thất bại với mã trạng thái ${response.status}`);
-    }
-
-    const reader = response.body?.getReader();
-    if (!reader) throw new Error("Không thể đọc luồng dữ liệu từ máy chủ.");
-
-    const decoder = new TextDecoder("utf-8");
-    let buffer = "";
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed.startsWith("data:")) continue;
-        const dataStr = trimmed.slice(5).trim();
-
-        if (dataStr === "[DONE]") break;
-
-        const parsed = JSON.parse(dataStr);
-        if (parsed.error) throw new Error(parsed.error);
-
-        onChunk({
-          text: parsed.text || "",
-          thought: parsed.thought || "",
-          model: parsed.model,
-          fallbackReason: parsed.fallbackReason,
-          groundingSources: parsed.groundingSources,
-          webSearchQueries: parsed.webSearchQueries,
-        });
-      }
-    }
   } catch (err: any) {
-    if (err.message && err.message.includes("Cloudflare")) {
-      throw err;
+    if (err.name === "AbortError") throw err;
+    throw new Error(
+      "Không thể kết nối đến máy chủ (" +
+        (err.message || "Lỗi mạng") +
+        "). Vui lòng kiểm tra lại kết nối hoặc nhập API Key trong phần Cài đặt (⚙️)."
+    );
+  }
+
+  // If server responds with 404 or 405 (e.g. static hosting without Express backend), prompt for API key
+  if (response.status === 404 || response.status === 405) {
+    throw new Error(
+      "Ứng dụng đang chạy ở chế độ máy chủ tĩnh. Vui lòng bấm vào icon Cài đặt (⚙️) ở góc trên bên phải để nhập Gemini API Key cá nhân của bạn."
+    );
+  }
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `Yêu cầu thất bại với mã trạng thái ${response.status}`);
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error("Không thể đọc luồng dữ liệu từ máy chủ.");
+
+  const decoder = new TextDecoder("utf-8");
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith("data:")) continue;
+      const dataStr = trimmed.slice(5).trim();
+
+      if (dataStr === "[DONE]") break;
+
+      const parsed = JSON.parse(dataStr);
+      if (parsed.error) {
+        throw new Error(parsed.error);
+      }
+
+      onChunk({
+        text: parsed.text || "",
+        thought: parsed.thought || "",
+        model: parsed.model,
+        fallbackReason: parsed.fallbackReason,
+        groundingSources: parsed.groundingSources,
+        webSearchQueries: parsed.webSearchQueries,
+      });
     }
-    // If network error or 405 occurred and no key provided:
-    if (err.name !== "AbortError" && !customApiKey) {
-      throw new Error(
-        "Không thể kết nối đến backend (Lỗi " + (err.message || "") + "). Nếu bạn deploy lên Cloudflare, vui lòng mở Cài đặt (⚙️) và nhập Gemini API Key để chat trực tiếp."
-      );
-    }
-    throw err;
   }
 }

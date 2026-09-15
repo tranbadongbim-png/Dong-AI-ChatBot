@@ -142,7 +142,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     High Thinking Mode
                   </h2>
                   <p className="text-[10px] text-slate-500 whitespace-nowrap">
-                    {enableThinking ? "ThinkingLevel.HIGH (Bật)" : "Tắt (Flash chuẩn)"}
+                    {enableThinking ? "Gemini 3.8 Flash (Dự phòng 3.6)" : "Tắt (Flash chuẩn)"}
                   </p>
                 </div>
               </div>
@@ -160,7 +160,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
             <p className="mt-2 text-[11px] leading-relaxed text-slate-600">
               {enableThinking
-                ? "Đang sử dụng cấp độ suy luận cao (ThinkingLevel.HIGH) để phân tích chi tiết logic, thuật toán và bài toán khó."
+                ? "Kích hoạt mô hình Gemini 3.8 Flash (dự phòng Gemini 3.6 Flash). Giữ nguyên chất lượng cao, không hạ model."
                 : "Chuyển đổi sang chế độ suy luận sâu để giải quyết các truy vấn học thuật, coding và logic phức tạp."}
             </p>
           </div>
