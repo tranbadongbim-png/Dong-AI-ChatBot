@@ -1,4 +1,73 @@
-export const DEFAULT_MYMEPTOOLS_CONTENT = `# 📘 TỔNG HỢP KIẾN THỨC — MyMEPTools.extension
+export const DEFAULT_MYMEPTOOLS_CONTENT = `# QUY CHUẨN WPF & CHỐNG SẬP MODEL — MyMEPTools.extension
+
+> Tài liệu này tổng hợp **phong cách thiết kế WPF/XAML** và **danh mục lỗi phải tránh tuyệt đối**,
+> rút ra trực tiếp từ toàn bộ source của extension (74 file \`script.py\`, 14 file \`.xaml\`).
+> Mọi quy tắc đều có **dẫn chứng file + số dòng** trong chính dự án.
+> Tài liệu anh em: \`TONG_HOP_KIEN_THUC_MyMEPTools.md\` (kiến thức nền Revit API/pyRevit).
+
+---
+
+## 0. CÁCH ĐỌC TÀI LIỆU — HỆ THỐNG NHÃN TUÂN THỦ
+
+| Nhãn | Ý nghĩa | Mức độ |
+|---|---|---|
+| 🔴 **[TTTĐ — BẮT BUỘC]** | Tuân thủ tuyệt đối. Vi phạm = tool lỗi / Revit ném exception. | Không có ngoại lệ |
+| **[CẤM HOÀN TOÀN]** | Hành vi cấm hoàn toàn. Vi phạm = có thể **sập Revit / hỏng file / mất dữ liệu**. | Không có ngoại lệ |
+| 🟠 **[KHUYẾN NGHỊ MẠNH]** | Nên làm; dự án đôi chỗ chưa áp dụng → nâng cấp dần. | Nên áp dụng |
+| 🔵 **[GHI NHẬN THỰC TRẠNG]** | Chỉ mô tả cái đang có (nhiều phong cách song song). | Tham khảo khi sửa file |
+| ✅ **[ĐÃ CHUẨN]** | Pattern này đã được dùng đúng & rộng trong dự án → copy nguyên xi. | Copy 100% |
+
+**Nguyên tắc số 1 của dự án:** *Thà tool báo lỗi và dừng, còn hơn để Revit ở trạng thái treo/hỏng model.*
+
+---
+
+# PHẦN A — PHONG CÁCH THIẾT KẾ WPF CỦA MyMEPTools
+
+## A1. Năm dòng phong cách đang tồn tại (thực trạng) 🔵
+
+Dự án có **5 nhóm giao diện** phát triển theo thời gian. Khi làm tool mới **phải dùng nhóm ①**.
+
+| # | Tên nhóm | Đặc trưng | File đại diện |
+|---|---|---|---|
+| ① | **Light Premium Dashboard** ⭐ CHUẨN MỚI | Nền \`#F3F4F6\`, card trắng, viền \`#E5E7EB\`, accent xanh \`#2563EB\`, Segoe UI, footer © | \`ZLevelPickerWindow.xaml\`, \`AlignViews.xaml\`, \`AlignResult.xaml\`, \`SheetViewManager.xaml\` |
+| ② | **Dark IDE (VS Code)** | \`#252526\` / \`#333337\` / \`#2D2D30\`, chữ \`#D4D4D4\`, accent \`#0078D4\`, close hover \`#E81123\` | \`Tagging Pro\\ui.xaml\` |
+| ③ | **Dark Neutral MEP** | \`#171B22\` / \`#202631\` / \`#252C37\`, accent **cam** \`#F06A35\`, chữ \`#F3F5F8\` | \`Connect Spk Pro\\ui.xaml\` |
+| ④ | **Legacy Light / Material** | Nền trắng–\`#FAFAFA\`, nút màu \`#FF9800\` \`#607D8B\` \`#009688\` \`#005FB8\`, DataGrid mặc định | \`Sheet Empty\\ui.xaml\`, \`Excel Synch\\ui.xaml\`, \`Color Systems\\ui.xaml\` |
+| ⑤ | **Glass Card + Gradient** | Card trắng bo 16px + drop shadow, nút gradient indigo \`#6366F1\` | \`Auto Merge Duct\\ui.xaml\`, \`Auto Split Duct\\ui.xaml\`, \`ui.xaml\` (splash) |
+
+🔵 **[GHI NHẬN]**: Không được "trộn" palette giữa các nhóm trong cùng một file XAML. Sửa tool cũ thì giữ nhóm cũ; làm tool mới thì dùng nhóm ①.
+
+---
+
+## A2. Palette chuẩn nhóm ① (copy chính xác — ✅ ĐÃ CHUẨN)
+
+\`\`\`xml
+<Window.Resources>
+    <SolidColorBrush x:Key="BgApp"         Color="#F3F4F6"/>  <!-- nền app -->
+    <SolidColorBrush x:Key="BgCard"        Color="#FFFFFF"/>  <!-- thẻ/ô nhập -->
+    <SolidColorBrush x:Key="BgCardHover"   Color="#F9FAFB"/>
+    <SolidColorBrush x:Key="BgCardSel"     Color="#EFF6FF"/>  <!-- mục đang chọn -->
+    <SolidColorBrush x:Key="BorderSoft"    Color="#E5E7EB"/>  <!-- viền mảnh -->
+    <SolidColorBrush x:Key="AccentBlue"    Color="#3B82F6"/>  <!-- icon / caret -->
+    <SolidColorBrush x:Key="AccentHover"   Color="#2563EB"/>  <!-- nút chính -->
+    <SolidColorBrush x:Key="TextPrimary"   Color="#111827"/>
+    <SolidColorBrush x:Key="TextSecondary" Color="#6B7280"/>
+</Window.Resources>
+\`\`\`
+
+---
+
+# PHẦN B — CHỐNG SẬP MODEL (SURVIVAL RULES)
+
+> Đây là phần quan trọng nhất. **Phần A sai → tool xấu/khó dùng. Phần B sai → mất dữ liệu, treo Revit, hỏng file.**
+
+1. **Mọi thay đổi model nằm trong đúng 1 \`Transaction\`** — và transaction đó phải được \`Commit\` hoặc \`RollBack\` tường minh, kể cả khi có exception.
+2. **Không thao tác Revit khi luồng không phải luồng API** (modeless WPF, timer, background thread) → chỉ được hoạt động qua \`ExternalEvent\` / \`Idling\`.
+3. **Thà dừng tool + báo lỗi rõ, còn hơn tiếp tục và sinh lỗi dây chuyền.** Mọi bước rủi ro phải được cô lập (\`try/except\` + \`SubTransaction\`) và có "van an toàn" (counter, kiểm tra \`IsValidObject\`, kiểm tra tồn tại trước khi dùng).
+
+---
+
+# 📘 TỔNG HỢP KIẾN THỨC — MyMEPTools.extension
 
 > Tài liệu tổng hợp toàn bộ tool pyRevit trong dự án: cấu trúc, quy trình hoạt động, cách dùng hàm và các lưu ý quan trọng.
 > **Tác giả:** Dong Tran Ba (BIMer) — Cập nhật: 2026
@@ -1074,43 +1143,7 @@ export const DEFAULT_MYMEPTOOLS_DOCUMENT = {
   enabled: true,
 };
 
-export const DEFAULT_CSHARP_RIBBON_DOC = {
-  id: "default_csharp_ribbon_doc",
-  name: "CSHARP_Ribbon_Icon_Guide.md",
-  content: DEFAULT_CSHARP_RIBBON_ICON_GUIDE,
-  size: DEFAULT_CSHARP_RIBBON_ICON_GUIDE.length,
-  type: "md",
-  source: "manual" as const,
-  updatedAt: Date.now(),
-  enabled: true,
-};
-
-export const DEFAULT_CSHARP_PLAYBOOK_DOC = {
-  id: "default_csharp_playbook_doc",
-  name: "CSHARP_Revit_API_Playbook.md",
-  content: DEFAULT_CSHARP_REVIT_API_PLAYBOOK,
-  size: DEFAULT_CSHARP_REVIT_API_PLAYBOOK.length,
-  type: "md",
-  source: "manual" as const,
-  updatedAt: Date.now(),
-  enabled: true,
-};
-
-export const DEFAULT_CSHARP_SUITE_DOC = {
-  id: "default_csharp_suite_doc",
-  name: "CSHARP_MEP_OWN_TOOLS_Suite.md",
-  content: DEFAULT_CSHARP_SUITE_OVERVIEW,
-  size: DEFAULT_CSHARP_SUITE_OVERVIEW.length,
-  type: "md",
-  source: "manual" as const,
-  updatedAt: Date.now(),
-  enabled: true,
-};
-
 export const DEFAULT_KNOWLEDGE_DOCUMENTS = [
   DEFAULT_MYMEPTOOLS_DOCUMENT,
-  DEFAULT_CSHARP_RIBBON_DOC,
-  DEFAULT_CSHARP_PLAYBOOK_DOC,
-  DEFAULT_CSHARP_SUITE_DOC,
 ];
 

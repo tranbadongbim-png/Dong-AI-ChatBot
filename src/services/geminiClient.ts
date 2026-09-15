@@ -222,67 +222,54 @@ async function clientFetchLiveWebSearch(query: string): Promise<{ title: string;
 }
 
 const PYREVIT_SPECIALIST_INSTRUCTION = `
-Bạn là Chuyên gia Lập trình pyRevit & Autodesk Revit API hàng đầu (pyRevit Senior Developer & BIM Automation Specialist).
-Mô hình chuyên dụng này được tối ưu cho việc code Python trên nền tảng pyRevit, tốc độ phản hồi cực nhanh, miễn phí và không bị giới hạn hạn ngạch.
+BẠN LÀ CHUYÊN GIA LẬP TRÌNH PYREVIT & AUTODESK REVIT API HÀNG ĐẦU (pyRevit Senior Developer & BIM Automation Specialist cho dự án MyMEPTools.extension).
 
-Các nguyên tắc bắt buộc khi viết mã pyRevit:
-1. Cấu trúc mã pyRevit chuẩn:
+QUY TẮC TỐI CAO BẮT BUỘC CHO PYCODER:
+1. BẮT BUỘC THAM CHIẾU TÀI LIỆU TRƯỚC KHI TRẢ LỜI & NHẢ CODE:
+   - Trước khi đưa ra bất kỳ phản hồi, giải thích hay đoạn mã Python nào, bạn PHẢI LUÔN THAM CHIẾU VÀ ĐỐI CHIẾU VỚI TÀI LIỆU QUY CHUẨN \`TONG_HOP_KIEN_THUC_MyMEPTools.md\`.
+   - Trong phần đầu câu trả lời, hãy LUÔN NÊU RÕ: "Đã đối chiếu với tài liệu quy chuẩn TONG_HOP_KIEN_THUC_MyMEPTools.md" và tóm tắt ngắn gọn quy chuẩn/hàm helper liên quan.
+
+2. TUÂN THỦ 100% CÁC TIÊU CHUẨN VÀ HÀM HELPER TRONG TÀI LIỆU:
+   - Thư viện helper cốt lõi: Ưu tiên sử dụng các lớp/hàm helper trong \`lib/plumbing_pro.py\` (\`ConnectorUtils\`, \`PipeUtils\`, \`_eid_int\`, \`SuppressWarnings\`...).
+   - Quy chuẩn đơn vị: Đơn vị nội bộ Revit DB là Feet (1 ft = 304.8 mm). Luôn chuyển đổi chính xác qua \`304.8\` hoặc \`UnitUtils\`.
+   - Cấu trúc thư mục Extension chuẩn: \`MyMEPTools.extension/MyMEPTools.tab/.../*.panel/*.pushbutton/script.py\`.
+   - Bẫy sập Revit API: Gọi \`doc.Regenerate()\` sau \`BreakCurve\` trước khi lấy Connector mới, bọc Transaction an toàn, và tự động xử lý cảnh báo (Suppress Warnings).
+
+3. CẤU TRÚC MÃ PYREVIT CHUẨN:
 # -*- coding: utf-8 -*-
 __title__ = "Tên Công Cụ"
-__author__ = "BIM Developer"
-__doc__ = """Mô tả chức năng công cụ chi tiết."""
+__author__ = "MyMEPTools"
+__doc__ = """Mô tả chức năng công cụ."""
 
 from pyrevit import revit, DB, UI, script, forms
 doc = revit.doc
 uidoc = revit.uidoc
-app = revit.app
 
-2. Thư viện Autodesk Revit API & IronPython/CPython:
-- Import đầy đủ namespace cần thiết từ Autodesk.Revit.DB (FilteredElementCollector, BuiltInCategory, BuiltInParameter, Transaction, ElementId, XYZ, UnitUtils, v.v.).
-- Quản lý Transaction an toàn khi thay đổi Document:
-  with revit.Transaction("Tên tác vụ"):
-      # Các thay đổi Revit DB
-
-3. Thu thập đối tượng (FilteredElementCollector):
-- Luôn kết hợp WhereElementIsNotElementType() hoặc WhereElementIsElementType() để tối ưu bộ nhớ.
-- Lọc theo Category hoặc Class chuẩn xác:
-  FilteredElementCollector(doc).OfCategory(DB.BuiltInCategory.OST_Walls).WhereElementIsNotElementType().ToElements()
-
-4. Tương tác với người dùng qua pyRevit forms:
-- Sử dụng forms.alert(), forms.SelectFromList, forms.ask_for_string() khi cần giao diện.
-- In kết quả rõ ràng qua script.get_output().
-
-5. Phong cách phản hồi:
-- Cung cấp code Python hoàn chỉnh, chú thích tiếng Việt rõ ràng, giải thích cách triển khai trong extension.
+4. PHONG CÁCH PHẢN HỒI:
+   - Cung cấp code Python pyRevit hoàn chỉnh, chú thích tiếng Việt rõ ràng, kèm vị trí lưu file trong extension (.extension/.tab/.panel/.pushbutton/script.py).
 `;
 
-const CSHARP_SPECIALIST_INSTRUCTION = `
-Bạn là Chuyên gia Lập trình C# Autodesk Revit API Add-in hàng đầu (Senior Revit API C# Developer & BIM Automation Specialist).
-Mô hình chuyên dụng này được tối ưu hóa cho việc lập trình C# Add-in (.NET 8.0 / .NET Framework 4.8), WPF MVVM, tạo Ribbon UI, và xử lý các thuật toán Revit API MEP phức tạp.
+function formatKnowledgeContextForClient(pyRevitContext: any, model?: string): string {
+  if (!pyRevitContext) return "";
 
-Các nguyên tắc bắt buộc khi viết mã C# Revit Add-in:
-1. Cấu trúc Command chuẩn (IExternalCommand):
-   [Transaction(TransactionMode.Manual)]
-   [Regeneration(RegenerationOption.Manual)]
-   public class MyCommand : IExternalCommand {
-       public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements) { ... }
-   }
+  let rawDocs = (pyRevitContext?.documents || []).filter(
+    (d: any) => d && d.enabled !== false && d.content && typeof d.content === "string"
+  );
 
-2. Cấu trúc UI Ribbon & Icon (IExternalApplication & AppUI.cs):
-   - Tạo RibbonTab, RibbonPanel, và PushButtonData với LargeImage (32x32) & Image (16x16) từ Resource BitmapImage.
-   - Nhúng icon PNG 32-bit dưới dạng Resource (Build Action: Resource / EmbeddedResource).
-   - Tham khảo 3 tài liệu C# kiến thức dự án (CSHARP_Ribbon_Icon_Guide.md, CSHARP_Revit_API_Playbook.md, CSHARP_MEP_OWN_TOOLS_Suite.md) để tích hợp Icon, Wye 45, WarningSwallower và MVVM.
+  if (rawDocs.length === 0) return "";
 
-3. Quản lý Revit API & MEP Piping:
-   - Chuyển đổi đơn vị chính xác qua UnitUtils hoặc 304.8 mm/feet (1 ft = 304.8 mm).
-   - Xử lý ConnectorManager, tính khoảng lùi Offset L = Diameter * factor + ExtraGap cho Wye 45°.
-   - Luôn gọi doc.Regenerate() sau khi BreakCurve hoặc chèn Fitting trước khi lấy Connector.
-   - Bọc các thay đổi DB trong Transaction.
-   - Tự động bỏ qua warning không cần thiết với IFailuresPreprocessor (WarningSwallower).
+  const customRules = pyRevitContext?.customGuidelines?.trim() || "";
+  const fileListNames = rawDocs.map((d: any) => `"${d.name}"`).join(", ");
 
-4. Phong cách phản hồi:
-   - Cung cấp code C# hoàn chỉnh, cấu trúc class rõ ràng, namespace ngắn gọn, kèm chú thích tiếng Việt và hướng dẫn đặt file trong giải pháp Visual Studio / Rider.
-`;
+  let contextBlock = `\n\n[BỘ NHỚ KHO TRI THỨC PYREVIT DỰ ÁN]:\nDanh sách tệp nạp sẵn: ${fileListNames}\n`;
+  if (customRules) {
+    contextBlock += `[HƯỚNG DẪN RIÊNG]: ${customRules}\n`;
+  }
+  rawDocs.forEach((doc: any, i: number) => {
+    contextBlock += `\n--- [TỆP ${i + 1}: "${doc.name}"] ---\n${doc.content}\n--- [HẾT TỆP: "${doc.name}"] ---\n`;
+  });
+  return contextBlock;
+}
 
 // Client-side direct Google Gemini SDK (for Cloudflare Pages / Static Hosting)
 async function streamDirectGemini(params: StreamChatParams) {
@@ -305,16 +292,12 @@ async function streamDirectGemini(params: StreamChatParams) {
   const ai = new GoogleGenAI({ apiKey: customApiKey });
   const contents = formatSdkContents(prompt, history, images);
   const isPyRevitModel = model === "pyrevit-code-pro" || model === "pyrevit-code-specialist";
-  const isCSharpModel = model === "csharp-revit-pro" || model === "csharp-revit-coder";
   const preferredModel = model === "gemini-flash-lite-latest" ? "gemini-3.1-flash-lite" : (model || "gemini-3.6-flash");
   
-  // Khi bật High Thinking: ưu tiên gemini-3.8-flash, nếu fail thì gọi gemini-3.6-flash, không hạ thêm model
-  // Khi chọn pyRevit hoặc C#: dùng các model coding cực nhanh, miễn phí, không giới hạn
-  // Khi High Thinking tắt: mặc định gemini-3.6-flash, nếu fail thì tự động chuyển sang Flash Lite để luôn có phản hồi!
   let candidateModels: string[];
   if (enableThinking) {
     candidateModels = ["gemini-3.8-flash", "gemini-3.6-flash"];
-  } else if (isPyRevitModel || isCSharpModel) {
+  } else if (isPyRevitModel) {
     candidateModels = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.5-flash"];
   } else {
     candidateModels = [
@@ -342,7 +325,7 @@ async function streamDirectGemini(params: StreamChatParams) {
     onChunk({
       text: textChunk,
       thought: thoughtChunk,
-      model: isCSharpModel ? "csharp-revit-pro" : (isPyRevitModel ? "pyrevit-code-pro" : activeModel),
+      model: isPyRevitModel ? "pyrevit-code-pro" : activeModel,
       fallbackReason,
       groundingSources,
       webSearchQueries,
@@ -364,9 +347,11 @@ async function streamDirectGemini(params: StreamChatParams) {
       }
     }
 
+    const knowledgeBlock = formatKnowledgeContextForClient(params.pyRevitContext, model);
     const baseInstruction =
       (systemInstruction ? systemInstruction + "\n" : "") +
-      (isCSharpModel ? CSHARP_SPECIALIST_INSTRUCTION + "\n" : (isPyRevitModel ? PYREVIT_SPECIALIST_INSTRUCTION + "\n" : "")) +
+      (isPyRevitModel ? PYREVIT_SPECIALIST_INSTRUCTION + "\n" : "") +
+      knowledgeBlock +
       searchContext;
     const fallbackInstruction = getRealtimeSystemInstruction(baseInstruction);
 

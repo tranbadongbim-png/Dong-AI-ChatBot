@@ -86,7 +86,6 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <option value="gemini-3.6-flash">Gemini 3.6 Flash (Mặc định)</option>
             <option value="pyrevit-code-pro">⚡ pyRevit Pro Coder (Free • Python)</option>
-            <option value="csharp-revit-pro">🔷 C# Revit Add-in Pro (Free • .NET C#)</option>
             <option value="gemini-3.5-flash-lite">Gemini 3.5 Flash Lite (Cực nhanh)</option>
             <option value="gemini-3.1-flash-lite">Gemini Flash Lite (Bền bỉ)</option>
             <option value="gemini-3.5-flash">Gemini 3.5 Flash (Cân bằng)</option>

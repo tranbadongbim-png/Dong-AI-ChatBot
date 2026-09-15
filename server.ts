@@ -3,6 +3,7 @@ import path from "path";
 import dotenv from "dotenv";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, ThinkingLevel } from "@google/genai";
+import { DEFAULT_MYMEPTOOLS_CONTENT } from "./src/data/defaultPyRevitKnowledge";
 
 dotenv.config();
 
@@ -306,71 +307,34 @@ async function fetchLiveWebSearch(query: string): Promise<{ title: string; uri: 
 
 // Specialized instructions for pyRevit & Revit API development
 const PYREVIT_SPECIALIST_INSTRUCTION = `
-Bạn là Chuyên gia Lập trình pyRevit & Autodesk Revit API hàng đầu (pyRevit Senior Developer & BIM Automation Specialist).
-Mô hình chuyên dụng này được tối ưu cho việc code Python trên nền tảng pyRevit, tốc độ phản hồi cực nhanh, miễn phí và không bị giới hạn hạn ngạch khắt khe.
+BẠN LÀ CHUYÊN GIA LẬP TRÌNH PYREVIT & AUTODESK REVIT API HÀNG ĐẦU (pyRevit Senior Developer & BIM Automation Specialist cho dự án MyMEPTools.extension).
+BẠN ĐƯỢC XÂY DỰNG TRÊN NỀN TẢNG TRÍ THÔNG MINH CAO CẤP GEMINI 3.6 FLASH ĐỂ PHÂN TÍCH VÀ NHẢ CODE CHÍNH XÁC NHẤT.
 
-Các nguyên tắc bắt buộc khi viết mã pyRevit:
-1. Cấu trúc mã pyRevit chuẩn:
+QUY TẮC TỐI CAO BẮT BUỘC CHO PYCODER:
+1. BẮT BUỘC THAM CHIẾU TÀI LIỆU QUY CHUẨN TRƯỚC KHI TRẢ LỜI & NHẢ CODE:
+   - Trước khi đưa ra bất kỳ câu trả lời, phân tích hay đoạn mã Python / XAML nào, bạn PHẢI LUÔN THAM CHIẾU VÀ ĐỐI CHIẾU VỚI TÀI LIỆU QUY CHUẨN ĐÃ NẠP (TONG_HOP_KIEN_THUC_MyMEPTools.md bao gồm Quy chuẩn WPF UI & Chống sập model).
+   - Ở DÒNG ĐẦU TIÊN CỦA MỌI CÂU TRẢ LỜI, BẠN BẮT BUỘC NÊU RÕ:
+     "📌 **Đã tham chiếu & đối chiếu tài liệu quy chuẩn MyMEPTools (WPF UI & Chống sập model)**"
+     kèm theo 1-2 dòng tóm tắt quy chuẩn UI/hàm helper/bẫy sập Revit API được áp dụng trong câu trả lời đó.
+
+2. TUÂN THỦ 100% QUY CHUẨN WPF UI VÀ CHỐNG SẬP MODEL:
+   - WPF UI Standards: Dùng Palette chuẩn Light Premium Dashboard (#F3F4F6, card trắng, accent #2563EB, Segoe UI). WindowStartupLocation="CenterScreen", ShowInTaskbar="False", TextOptions.TextFormattingMode="Display", UseLayoutRounding="True". Control name snake_case + hasattr guard.
+   - Thư viện helper cốt lõi: Ưu tiên sử dụng các lớp/hàm helper trong lib/plumbing_pro.py (ConnectorUtils, PipeUtils, _eid_int, SuppressWarnings...).
+   - Quy chuẩn đơn vị: Đơn vị nội bộ Revit DB là Feet (1 ft = 304.8 mm). Luôn chuyển đổi chính xác qua 304.8 hoặc UnitUtils.
+   - Chống sập model: 1 Transaction cho 1 thao tác, luôn doc.Regenerate() sau BreakCurve hoặc tạo element trước khi lấy connector. Lọc Logical connectors, kiểm tra IsConnected và IsValidObject. Trong SubTransaction/Transaction luôn có try/except/finally + RollBack nếu fail.
+
+3. CẤU TRÚC MÃ PYREVIT CHUẨN:
 # -*- coding: utf-8 -*-
 __title__ = "Tên Công Cụ"
-__author__ = "BIM Developer"
-__doc__ = """Mô tả chức năng công cụ chi tiết."""
+__author__ = "MyMEPTools"
+__doc__ = """Mô tả chức năng công cụ."""
 
 from pyrevit import revit, DB, UI, script, forms
 doc = revit.doc
 uidoc = revit.uidoc
-app = revit.app
 
-2. Thư viện Autodesk Revit API & IronPython/CPython:
-- Import đầy đủ namespace cần thiết từ Autodesk.Revit.DB (FilteredElementCollector, BuiltInCategory, BuiltInParameter, Transaction, ElementId, XYZ, UnitUtils, v.v.).
-- Quản lý Transaction an toàn khi thay đổi Document:
-  with revit.Transaction("Tên tác vụ"):
-      # Các thay đổi Revit DB
-  hoặc sử dụng khối try...finally với t = DB.Transaction(doc, "Tên tác vụ") -> t.Start() -> t.Commit() -> t.RollBack().
-
-3. Thu thập đối tượng (FilteredElementCollector):
-- Luôn kết hợp WhereElementIsNotElementType() hoặc WhereElementIsElementType() để tối ưu bộ nhớ.
-- Lọc theo Category hoặc Class chuẩn xác:
-  FilteredElementCollector(doc).OfCategory(DB.BuiltInCategory.OST_Walls).WhereElementIsNotElementType().ToElements()
-
-4. Tương tác với người dùng qua pyRevit forms:
-- Sử dụng forms.alert(), forms.SelectFromList, forms.ask_for_string() khi cần giao diện nhập liệu.
-- In kết quả, thông báo lỗi rõ ràng qua script.get_output().
-
-5. Xử lý đơn vị (UnitUtils):
-- Chuyển đổi giữa Feet (đơn vị nội bộ Revit) và Mét/Milimét sử dụng DB.UnitUtils (tương thích cả ForgeTypeId / UnitTypeId trên Revit 2022+ và DisplayUnitType trên Revit cũ).
-
-6. Phong cách phản hồi:
-- Cung cấp code Python hoàn chỉnh, có chú thích tiếng Việt rõ ràng, kèm hướng dẫn đặt vị trí file trong cấu trúc extension (.extension/.tab/.panel/.pushbutton/script.py).
-`;
-
-// Specialized instructions for C# Revit API Add-in development
-const CSHARP_SPECIALIST_INSTRUCTION = `
-Bạn là Chuyên gia Lập trình C# Autodesk Revit API Add-in hàng đầu (Senior Revit API C# Developer & BIM Automation Specialist).
-Mô hình chuyên dụng này được tối ưu hóa cho việc lập trình C# Add-in (.NET 8.0 / .NET Framework 4.8), WPF MVVM, tạo Ribbon UI, và xử lý các thuật toán Revit API MEP phức tạp.
-
-Các nguyên tắc bắt buộc khi viết mã C# Revit Add-in:
-1. Cấu trúc Command chuẩn (IExternalCommand):
-   [Transaction(TransactionMode.Manual)]
-   [Regeneration(RegenerationOption.Manual)]
-   public class MyCommand : IExternalCommand {
-       public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements) { ... }
-   }
-
-2. Cấu trúc UI Ribbon & Icon (IExternalApplication & AppUI.cs):
-   - Tạo RibbonTab, RibbonPanel, và PushButtonData với LargeImage (32x32) & Image (16x16) từ Resource BitmapImage.
-   - Nhúng icon PNG 32-bit dưới dạng Resource (Build Action: Resource / EmbeddedResource).
-   - Tham khảo 3 tài liệu C# kiến thức dự án (CSHARP_Ribbon_Icon_Guide.md, CSHARP_Revit_API_Playbook.md, CSHARP_MEP_OWN_TOOLS_Suite.md) để tích hợp Icon, Wye 45, WarningSwallower và MVVM.
-
-3. Quản lý Revit API & MEP Piping:
-   - Chuyển đổi đơn vị chính xác qua UnitUtils hoặc 304.8 mm/feet (1 ft = 304.8 mm).
-   - Xử lý ConnectorManager, tính khoảng lùi Offset L = Diameter * factor + ExtraGap cho Wye 45°.
-   - Luôn gọi doc.Regenerate() sau khi BreakCurve hoặc chèn Fitting trước khi lấy Connector.
-   - Bọc các thay đổi DB trong Transaction.
-   - Tự động bỏ qua warning không cần thiết với IFailuresPreprocessor (WarningSwallower).
-
-4. Phong cách phản hồi:
-   - Cung cấp code C# hoàn chỉnh, cấu trúc class rõ ràng, namespace ngắn gọn, kèm chú thích tiếng Việt và hướng dẫn đặt file trong giải pháp Visual Studio / Rider.
+4. PHONG CÁCH PHẢN HỒI:
+   - Cung cấp code Python pyRevit hoàn chỉnh trong khung code markdown (\`\`\`python ... \`\`\`), chú thích tiếng Việt rõ ràng, kèm vị trí lưu file trong extension (.extension/.tab/.panel/.pushbutton/script.py).
 `;
 
 // Helper to format knowledge base documents for pyRevit Coder & Gemini
@@ -1170,155 +1134,20 @@ const BUILTIN_MYMEPTOOLS_DOC = {
   content: BUILTIN_MYMEPTOOLS_CONTENT,
 };
 
-const BUILTIN_CSHARP_RIBBON_DOC = {
-  name: "CSHARP_Ribbon_Icon_Guide.md",
-  type: "md",
-  content: `# 🎨 Learn — Ribbon icon (Tạo Icon, Phong Cách, Màu Sắc trong C# Revit Add-in)
-
-> Tài liệu rút ra từ cách làm icon của dự án **Avoid Clash** và **AppUI.cs**. Hướng dẫn chuẩn hóa quy trình thiết kế, tích hợp và quản lý icon trên Ribbon Revit API (.NET / C#).
-
----
-
-## 1. Nguyên Tắc Thiết Kế Icon Ribbon chuẩn Revit API
-- **Kích thước chuẩn (Revit API Ribbon):**
-  - **Large Icon:** 32x32 px (Dùng cho PushButton cỡ lớn trên Ribbon Panel).
-  - **Small Icon:** 16x16 px (Dùng cho PulldownButton, SplitButton hoặc Stacked Buttons).
-- **Định dạng:** PNG 32-bit (có alpha channel trong suốt).
-- **Phong cách thị giác:** Đơn giản, phẳng (Flat Design) có viền 1px, màu tương phản cao (Blue/Cyan cho MEP, Red/Yellow cho Clash, Orange/Green cho Utility).
-
----
-
-## 2. Helper Class chuyển đổi Resource sang BitmapImage (AppUI.cs)
-\`\`\`csharp
-using System;
-using System.Reflection;
-using System.Windows.Media.Imaging;
-
-namespace AvoidClash.UI
-{
-    public static class ImageUtils
-    {
-        public static BitmapImage GetEmbeddedImage(string resourceName)
-        {
-            try
-            {
-                Assembly assembly = Assembly.GetExecutingAssembly();
-                string packUri = $"pack://application:,,,/{assembly.GetName().Name};component/Resources/Icons/{resourceName}";
-                BitmapImage bitmap = new BitmapImage();
-                bitmap.BeginInit();
-                bitmap.UriSource = new Uri(packUri, UriKind.Absolute);
-                bitmap.CacheOption = BitmapCacheOption.OnLoad;
-                bitmap.EndInit();
-                bitmap.Freeze();
-                return bitmap;
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[ImageUtils Error] Không thể tải icon {resourceName}: {ex.Message}");
-                return null;
-            }
-        }
-    }
-}
-\`\`\`
-`,
-};
-
-const BUILTIN_CSHARP_PLAYBOOK_DOC = {
-  name: "CSHARP_Revit_API_Playbook.md",
-  type: "md",
-  content: `# 📚 Revit API — MEP Piping: Tài liệu học thuật & Playbook
-
-> Tổng hợp kiến thức chuyên sâu, thuật toán hình học và các "bẫy" (pitfalls) rút ra từ dự án **Plumbing Pro 2025+** (Viết bằng C# .NET 8 / Revit API 2024-2026).
-
----
-
-## 1. Đơn vị & Chuyển Đổi (Feet vs MM)
-- Đơn vị nội bộ Revit: **Feet (ft)**. 1 Feet = 304.8 mm.
-- UnitUtils (Revit 2022+): \`UnitUtils.ConvertToInternalUnits(val, UnitTypeId.Millimeters)\`.
-- Helper constant: \`const double MM_TO_FEET = 1.0 / 304.8;\`
-
----
-
-## 2. Nối Ống Wye 45° & Connector Offset
-- Offset distance L = Diameter * factor + ExtraGap.
-- Bẫy: Quên \`doc.Regenerate()\` sau \`BreakCurve\` trước khi lấy Connector của đoạn ống mới.
-- Bắt buộc bọc \`ConnectTo\` trong Transaction.
-- Suppress Warnings với \`IFailuresPreprocessor\` (WarningSwallower).
-`,
-};
-
-const BUILTIN_CSHARP_SUITE_DOC = {
-  name: "CSHARP_MEP_OWN_TOOLS_Suite.md",
-  type: "md",
-  content: `# 🛠️ Tổng Hợp Kiến Thức — Bộ Tool Revit API (MEP OWN TOOLS Suite)
-
-> Tổng quan bộ công cụ **MEP OWN TOOLS Suite** gồm 10+ tool Revit Add-in C# .NET 8 WPF.
-
----
-
-## 1. Danh Sách 10 Tool Cốt Lõi Trong Suite
-1. Avoid Clash 3D (bẻ co 45°/90° tránh va chạm)
-2. Plumbing Wye 45 Pro (nối nhánh thoát nước 1.5D - 5D)
-3. Auto Split & Merge Duct/Pipe
-4. MEP BOQ Dashboard
-5. Color Systems Pro
-6. Smart Align Views
-7. Sprinkler Connect Pro
-8. Z-Elevation Level Shift
-9. Tagging MEP Batch
-10. Excel Parameter Sync
-
----
-
-## 2. Mẫu Khung Code IExternalCommand Chuẩn
-\`\`\`csharp
-using System;
-using Autodesk.Revit.UI;
-using Autodesk.Revit.DB;
-using Autodesk.Revit.Attributes;
-
-namespace MepOwnTools.Commands
-{
-    [Transaction(TransactionMode.Manual)]
-    [Regeneration(RegenerationOption.Manual)]
-    public class AvoidClashCommand : IExternalCommand
-    {
-        public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
-        {
-            UIApplication uiapp = commandData.Application;
-            UIDocument uidoc = uiapp.ActiveUIDocument;
-            Document doc = uidoc.Document;
-            using (Transaction trans = new Transaction(doc, "MEP Avoid Clash"))
-            {
-                trans.Start();
-                // Core Command Logic
-                trans.Commit();
-            }
-            return Result.Succeeded;
-        }
-    }
-}
-\`\`\`
-`,
-};
-
 const ALL_BUILTIN_KNOWLEDGE_DOCS = [
   BUILTIN_MYMEPTOOLS_DOC,
-  BUILTIN_CSHARP_RIBBON_DOC,
-  BUILTIN_CSHARP_PLAYBOOK_DOC,
-  BUILTIN_CSHARP_SUITE_DOC,
 ];
 
-function buildPyRevitKnowledgeContext(pyRevitContext: any): string {
-  let activeDocs = (pyRevitContext?.documents || []).filter(
+function buildPyRevitKnowledgeContext(pyRevitContext: any, targetModel?: string): string {
+  let rawDocs = (pyRevitContext?.documents || []).filter(
     (d: any) => d && d.enabled !== false && d.content && typeof d.content === "string"
   );
 
-  // Always ensure default built-in documents are included in activeDocs if not present
-  ALL_BUILTIN_KNOWLEDGE_DOCS.forEach((builtin) => {
-    if (!activeDocs.some((d: any) => d.name === builtin.name)) {
-      activeDocs.push(builtin);
+  let activeDocs: any[] = [BUILTIN_MYMEPTOOLS_DOC];
+
+  rawDocs.forEach((d: any) => {
+    if (!activeDocs.some((existing) => existing.name === d.name)) {
+      activeDocs.push(d);
     }
   });
 
@@ -1326,20 +1155,20 @@ function buildPyRevitKnowledgeContext(pyRevitContext: any): string {
   const fileListNames = activeDocs.map((d: any) => `"${d.name}" (${(d.content.length / 1024).toFixed(1)} KB)`).join(", ");
 
   let contextBlock = `\n\n================================================================================
-[BỘ NHỚ KHO TRI THỨC DỰ ÁN DÀNH CHO AI (pyRevit & C# Revit Add-in) - BẮT BUỘC ĐỌC VÀ TUÂN THỦ 100%]
-XÁC NHẬN HỆ THỐNG DÀNH CHO AI:
-Tài liệu tổng hợp quy chuẩn & mã nguồn dự án "MyMEPTools.extension" và bộ tài liệu Lập trình C# Revit Add-in (.NET 8 WPF, Ribbon Icon, Wye 45, Avoid Clash) ĐÃ ĐƯỢC MẶC ĐỊNH NẠP TRỰC TIẾP VÀO CONTEXT THƯỜNG TRỰC CỦA BẠN TRƯỚC MỖI PHIÊN CHAT.
-Toàn bộ ${activeDocs.length} tệp dưới đây là nguồn tri thức cốt lõi bắt buộc đọc và tuân thủ:
+[BỘ NHỚ KHO TRI THỨC DÀNH RIÊNG CHO PYREVIT CODER (PYTHON) - BẮT BUỘC ĐỌC VÀ TUÂN THỦ 100%]
+XÁC NHẬN HỆ THỐNG DÀNH CHO PYREVIT CODER:
+Tài liệu quy chuẩn & mã nguồn Python extension "MyMEPTools.extension" ĐÃ ĐƯỢC NẠP TRỰC TIẾP VÀO CONTEXT THƯỜNG TRỰC CỦA BẠN.
+Toàn bộ ${activeDocs.length} tệp Python/pyRevit dưới đây là nguồn tri thức cốt lõi duy nhất bắt buộc đọc và tuân thủ:
 ${fileListNames}
 
-QUY TẮC BẮT BUỘC CHO AI KHI PHẢN HỒI:
-1. Bạn LUÔN LUÔN ĐỌC VÀ NẮM VỮNG toàn bộ nội dung trong kho tri thức này TRƯỚC MỖI PHIÊN CHAT.
+QUY TẮC BẮT BUỘC CHO PYREVIT CODER KHI PHẢN HỒI:
+1. Bạn LUÔN LUÔN THAM CHIẾU VÀ ĐỐI CHIẾU VỚI TÀI LIỆU QUY CHUẨN TONG_HOP_KIEN_THUC_MyMEPTools.md TRƯỚC MỖI PHIÊN CHAT VÀ TRƯỚC KHI TRẢ LỜI / NHẢ CODE.
 2. Khi người dùng hỏi bất kỳ câu nào như: "mày có đọc được file không", "file md tên gì", "đọc đi", "kiểm tra kho kiến thức", "file kho tên gì":
-   -> BẠN PHẢI TRẢ LỜI NGAY VỚI THÁI ĐỘ TỰ TIN: "Tôi luôn mặc định đọc file TONG_HOP_KIEN_THUC_MyMEPTools.md và bộ 3 tài liệu C# Revit API Add-in (CSHARP_Ribbon_Icon_Guide.md, CSHARP_Revit_API_Playbook.md, CSHARP_MEP_OWN_TOOLS_Suite.md) trước mỗi phiên chat!"
-   -> Liệt kê các tệp đang giữ: ${fileListNames}.
-   -> Nêu tóm tắt 3-4 điểm chính trong kho kiến thức (pyRevit extension, C# Ribbon Icon embedding, Wye 45 offset calculation, WarningSwallower IFailuresPreprocessor, quy chuẩn 304.8 mm/feet...).
-3. NGHIÊM CẤM TỰ ĐỘNG PHẢN HỒI THEO MẪU GIẢ LẬP: "Không có file nào được gửi", "Tôi không trực tiếp truy cập vào ổ cứng".
-4. Khi lập trình pyRevit / C# Revit Add-in API, bạn BẮT BUỘC tuân thủ đúng kiến trúc, hàm helper, và phong cách code được quy định trong tài liệu này (Ví dụ: SuppressWarnings, BreakCurve, ConnectorUtils, PipeUtils, ImageUtils, WarningSwallower...).
+   -> BẠN PHẢI TRẢ LỜI NGAY VỚI THÁI ĐỘ TỰ TIN: "Tôi luôn mặc định đọc file TONG_HOP_KIEN_THUC_MyMEPTools.md trước mỗi phiên chat pyRevit!"
+   -> Liệt kê các tệp pyRevit đang giữ: ${fileListNames}.
+   -> Nêu tóm tắt 3-4 điểm chính trong kho kiến thức pyRevit (thư viện lib/plumbing_pro.py, 3 panel Dong's Tool, Model Tool, Plumbing, quy chuẩn 304.8 mm/feet, ConnectorUtils, PipeUtils...).
+3. CHỈ tập trung vào lập trình Python / pyRevit API.
+4. Khi lập trình pyRevit, bạn BẮT BUỘC tuân thủ đúng kiến trúc, hàm helper, và phong cách code được quy định trong tài liệu này (Ví dụ: SuppressWarnings, BreakCurve, ConnectorUtils, PipeUtils, _eid_int...).
 `;
 
   if (customRules) {
@@ -1676,15 +1505,13 @@ function getResilientModelList(requestedModel?: string, enableThinking: boolean 
     return ["gemini-3.8-flash", "gemini-3.6-flash"];
   }
 
-  // Model chuyên dụng cho lập trình pyRevit & C# Revit Add-in:
-  // Tốc độ cao, tối ưu code Python / C#, hoàn toàn miễn phí, quota dồi dào không bị limit
+  // Model chuyên dụng cho lập trình pyRevit & Revit API Automation:
+  // Build trên nền Gemini 3.6 Flash để có trí thông minh phân tích code tối ưu & chính xác nhất.
   if (
     requestedModel === "pyrevit-code-pro" ||
-    requestedModel === "pyrevit-code-specialist" ||
-    requestedModel === "csharp-revit-pro" ||
-    requestedModel === "csharp-revit-coder"
+    requestedModel === "pyrevit-code-specialist"
   ) {
-    return ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.5-flash"];
+    return ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite"];
   }
 
   // Nếu High Thinking tắt: dùng mặc định 3.6 flash, nếu fail thì đưa về Flash Lite để đảm bảo luôn có phản hồi!
@@ -1791,15 +1618,10 @@ app.post("/api/gemini/stream", async (req, res) => {
   }
 
   const isPyRevitModel = model === "pyrevit-code-pro" || model === "pyrevit-code-specialist";
-  const isCSharpModel = model === "csharp-revit-pro" || model === "csharp-revit-coder";
-  const pyRevitKnowledge = buildPyRevitKnowledgeContext(pyRevitContext);
+  const pyRevitKnowledge = buildPyRevitKnowledgeContext(pyRevitContext, model);
   const baseInstruction =
     (systemInstruction ? systemInstruction + "\n" : "") +
-    (isCSharpModel
-      ? CSHARP_SPECIALIST_INSTRUCTION + "\n"
-      : isPyRevitModel
-      ? PYREVIT_SPECIALIST_INSTRUCTION + "\n"
-      : "") +
+    (isPyRevitModel ? PYREVIT_SPECIALIST_INSTRUCTION + "\n" : "") +
     pyRevitKnowledge +
     searchContext;
 

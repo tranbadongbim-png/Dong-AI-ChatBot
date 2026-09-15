@@ -431,6 +431,9 @@ export const PyRevitContextModal: React.FC<PyRevitContextModalProps> = ({
                           >
                             .{doc.type}
                           </span>
+                          <span className="rounded bg-amber-100 px-1.5 py-0.2 text-[9px] font-bold text-amber-800 border border-amber-200">
+                            🐍 pyRevit Extension
+                          </span>
                           <span className="text-[10px] text-slate-400">
                             ({(doc.size / 1024).toFixed(1)} KB)
                           </span>

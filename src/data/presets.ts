@@ -2,13 +2,13 @@ import { PresetPrompt } from "../types";
 
 export const PRESET_PROMPTS: PresetPrompt[] = [
   {
-    id: "csharp-revit-addin",
-    category: "Lập Trình C# Revit Add-in",
-    title: "Viết C# Add-in .NET 8 & Ribbon UI",
-    description: "Tạo PushButton, IExternalCommand, Ribbon Panel, Icon Resource & Avoid Clash / Wye 45",
-    prompt: "Hãy đóng vai Chuyên gia Lập trình C# Revit API Add-in (.NET 8.0 / .NET Framework 4.8). Viết mã nguồn C# hoàn chỉnh tạo một Ribbon Tab 'MEP OWN TOOLS' chứa Ribbon Panel và PushButton kích hoạt một IExternalCommand bẻ co tránh va chạm 3D (Avoid Clash). Nhúng icon PNG 32x32 qua ImageUtils, xử lý Transaction, UnitUtils 304.8 mm và IFailuresPreprocessor (WarningSwallower).",
+    id: "pyrevit-mymeptools-preset",
+    category: "Lập Trình pyRevit Extension",
+    title: "Viết Tool Plumbing / MEP pyRevit",
+    description: "Tham chiếu quy chuẩn MyMEPTools.extension, Wye 45°, BreakCurve & lib/plumbing_pro.py",
+    prompt: "Hãy viết một script pyRevit hoàn chỉnh bằng Python chuẩn quy chuẩn MyMEPTools.extension: Tham chiếu thư viện helper lib/plumbing_pro.py (ConnectorUtils, PipeUtils, SuppressWarnings), xử lý bẻ co hoặc nối nhánh ống MEP, bọc Transaction đầy đủ, chuyển đổi 304.8 mm/feet và hướng dẫn cấu trúc thư mục .pushbutton/script.py.",
     enableThinking: false,
-    model: "csharp-revit-pro",
+    model: "pyrevit-code-pro",
     iconName: "Code2",
   },
   {
