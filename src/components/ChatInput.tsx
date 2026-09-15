@@ -3,6 +3,7 @@ import {
   Send,
   Square,
   Brain,
+  Globe,
   X,
   UploadCloud,
   FileCode,
@@ -18,6 +19,8 @@ interface ChatInputProps {
   isLoading: boolean;
   enableThinking: boolean;
   onToggleThinking: (enabled: boolean) => void;
+  enableSearch?: boolean;
+  onToggleSearch?: (enabled: boolean) => void;
 }
 
 // Helper to determine file category
@@ -57,6 +60,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   isLoading,
   enableThinking,
   onToggleThinking,
+  enableSearch = true,
+  onToggleSearch,
 }) => {
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<ChatImage[]>([]);
@@ -65,160 +70,119 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Auto-resize textarea
+  // Auto-resize textarea as text expands
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
       textareaRef.current.style.height = `${Math.min(
         textareaRef.current.scrollHeight,
-        200
+        180
       )}px`;
     }
   }, [text]);
 
-  const addFiles = useCallback((files: FileList | File[]) => {
-    const fileArray = Array.from(files);
+  // Read file into ChatImage
+  const processFile = useCallback((file: File) => {
+    const { category, mimeType } = getFileCategory(file);
 
-    fileArray.forEach((file) => {
-      const { category, mimeType } = getFileCategory(file);
-
-      // Handle Code & Text files (e.g. .xaml, .py, .ts, .json, .txt)
-      if (category === "code" || category === "text") {
-        const textReader = new FileReader();
-        textReader.onload = () => {
-          const content = (textReader.result as string) || "";
-          setAttachments((prev) => {
-            // Deduplicate by name & size
-            if (prev.some((a) => a.name === file.name && a.size === file.size)) {
-              return prev;
-            }
-            return [
-              ...prev,
-              {
-                id: Math.random().toString(36).substring(2, 9),
-                data: content,
-                mimeType,
-                name: file.name,
-                size: file.size,
-                fileType: category,
-                textContent: content,
-              },
-            ];
-          });
-        };
-        textReader.onerror = () => {
-          console.error("Lỗi khi đọc tệp văn bản:", file.name);
-        };
-        textReader.readAsText(file, "utf-8");
-        return;
-      }
-
-      // Handle PDF and Images via readAsDataURL
+    // Text & code files (including Python, XAML, markdown, etc.)
+    if (category === "code" || category === "text") {
       const reader = new FileReader();
-      reader.onload = () => {
-        const base64String = reader.result as string;
-        setAttachments((prev) => {
-          if (prev.some((a) => a.name === file.name && a.size === file.size)) {
-            return prev;
-          }
-          return [
-            ...prev,
-            {
-              id: Math.random().toString(36).substring(2, 9),
-              data: base64String,
-              mimeType,
-              name: file.name || `${category}_${Date.now()}`,
-              size: file.size,
-              fileType: category,
-            },
-          ];
-        });
+      reader.onload = (e) => {
+        const textContent = (e.target?.result as string) || "";
+        const base64Data = btoa(unescape(encodeURIComponent(textContent)));
+        const newAttachment: ChatImage = {
+          id: "att_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 6),
+          data: `data:${mimeType};base64,${base64Data}`,
+          mimeType,
+          name: file.name,
+          size: file.size,
+          fileType: category,
+          textContent,
+        };
+        setAttachments((prev) => [...prev, newAttachment]);
       };
-      reader.onerror = () => {
-        console.error("Lỗi khi đọc tệp đa phương tiện:", file.name);
+      reader.readAsText(file);
+      return;
+    }
+
+    // Binary files (PDF, images)
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target?.result as string;
+      const newAttachment: ChatImage = {
+        id: "att_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 6),
+        data: dataUrl,
+        mimeType,
+        name: file.name,
+        size: file.size,
+        fileType: category,
       };
-      reader.readAsDataURL(file);
-    });
+      setAttachments((prev) => [...prev, newAttachment]);
+    };
+    reader.readAsDataURL(file);
   }, []);
 
-  // Window-level Drag and Drop Listeners with strict anti-flickering drag counter
-  useEffect(() => {
-    const handleWindowDragEnter = (e: DragEvent) => {
-      e.preventDefault();
-      if (e.dataTransfer?.types?.includes("Files")) {
-        dragCounterRef.current += 1;
-        if (dragCounterRef.current === 1) {
-          setIsDragging(true);
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      Array.from(e.target.files).forEach(processFile);
+      e.target.value = "";
+    }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.kind === "file") {
+        const file = item.getAsFile();
+        if (file) {
+          processFile(file);
+          e.preventDefault();
         }
       }
-    };
+    }
+  };
 
-    const handleWindowDragOver = (e: DragEvent) => {
-      e.preventDefault();
-      if (e.dataTransfer) {
-        e.dataTransfer.dropEffect = "copy";
-      }
-    };
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current += 1;
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      setIsDragging(true);
+    }
+  };
 
-    const handleWindowDragLeave = (e: DragEvent) => {
-      e.preventDefault();
-      dragCounterRef.current -= 1;
-      if (dragCounterRef.current <= 0) {
-        dragCounterRef.current = 0;
-        setIsDragging(false);
-      }
-    };
-
-    const handleWindowDrop = (e: DragEvent) => {
-      e.preventDefault();
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current -= 1;
+    if (dragCounterRef.current <= 0) {
       dragCounterRef.current = 0;
       setIsDragging(false);
-
-      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-        addFiles(e.dataTransfer.files);
-      }
-    };
-
-    window.addEventListener("dragenter", handleWindowDragEnter);
-    window.addEventListener("dragover", handleWindowDragOver);
-    window.addEventListener("dragleave", handleWindowDragLeave);
-    window.addEventListener("drop", handleWindowDrop);
-
-    return () => {
-      window.removeEventListener("dragenter", handleWindowDragEnter);
-      window.removeEventListener("dragover", handleWindowDragOver);
-      window.removeEventListener("dragleave", handleWindowDragLeave);
-      window.removeEventListener("drop", handleWindowDrop);
-    };
-  }, [addFiles]);
-
-  // Handle Clipboard Paste (Ctrl+V / Cmd+V / Screenshot / Copied files)
-  const handlePaste = (e: React.ClipboardEvent) => {
-    const clipboardData = e.clipboardData;
-    if (!clipboardData) return;
-
-    const targetFiles: File[] = [];
-
-    // Prefer items
-    if (clipboardData.items && clipboardData.items.length > 0) {
-      for (let i = 0; i < clipboardData.items.length; i++) {
-        const item = clipboardData.items[i];
-        if (item.kind === "file") {
-          const file = item.getAsFile();
-          if (file) {
-            targetFiles.push(file);
-          }
-        }
-      }
-    } else if (clipboardData.files && clipboardData.files.length > 0) {
-      for (let i = 0; i < clipboardData.files.length; i++) {
-        targetFiles.push(clipboardData.files[i]);
-      }
     }
+  };
 
-    if (targetFiles.length > 0) {
-      addFiles(targetFiles);
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current = 0;
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      Array.from(e.dataTransfer.files).forEach(processFile);
+      e.dataTransfer.clearData();
     }
+  };
+
+  const handleRemoveAttachment = (id: string) => {
+    setAttachments((prev) => prev.filter((item) => item.id !== id));
   };
 
   const handleSubmit = (e?: React.FormEvent) => {
@@ -240,82 +204,72 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files) return;
-    addFiles(files);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-  };
-
-  const handleRemoveAttachment = (id: string) => {
-    setAttachments((prev) => prev.filter((item) => item.id !== id));
-  };
-
-  const isPythonFile = (name: string) => name.toLowerCase().endsWith(".py");
-  const isXamlFile = (name: string) => name.toLowerCase().endsWith(".xaml");
-  const isPdfFile = (name: string, type?: string) =>
-    name.toLowerCase().endsWith(".pdf") || type === "pdf";
-
   return (
-    <div className="relative mx-auto w-full max-w-4xl px-3 sm:px-4 pb-3 sm:pb-4 bg-white shrink-0">
-      {/* Non-flickering full-area Drop Overlay with pointer-events-none */}
+    <div
+      id="chat-input-wrapper"
+      className="relative w-full"
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      {/* Full-size Drag overlay with pointer-events-none to avoid flickering */}
       {isDragging && (
-        <div className="pointer-events-none select-none absolute inset-x-3 sm:inset-x-4 inset-y-0 z-50 flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-blue-500 bg-blue-50/95 shadow-xl backdrop-blur-xs transition-all animate-in fade-in duration-150">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-100 text-blue-600 shadow-xs mb-2">
-            <UploadCloud className="h-6 w-6" />
+        <div className="pointer-events-none absolute -inset-3 z-30 flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-blue-500 bg-blue-50/95 p-4 text-center backdrop-blur-xs transition-all shadow-lg animate-in fade-in zoom-in-95 duration-150">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-md">
+            <UploadCloud className="h-6 w-6 animate-bounce" />
           </div>
-          <p className="text-sm font-bold text-blue-900">
-            Thả tệp vào đây để Gemini 3.6 đọc & phân tích
-          </p>
-          <p className="text-xs text-blue-600 mt-0.5">
-            Hỗ trợ .xaml, .py, PDF, Code (.ts, .js, .json, .cs...), Hình ảnh
-          </p>
+          <div>
+            <p className="text-sm font-bold text-blue-950">
+              Thả tệp vào đây để tải lên
+            </p>
+            <p className="text-xs text-blue-700 mt-0.5">
+              Hỗ trợ <strong className="font-semibold">.xaml, .py, PDF, Code, Ảnh</strong> và tài liệu
+            </p>
+          </div>
         </div>
       )}
 
-      {/* Uploaded attachments preview bar */}
+      {/* Attachments Preview Carousel */}
       {attachments.length > 0 && (
-        <div className="mb-2 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2.5 shadow-xs">
+        <div className="mb-2 flex flex-wrap items-center gap-2 px-1">
           {attachments.map((att) => {
-            const isPy = isPythonFile(att.name);
-            const isXaml = isXamlFile(att.name);
-            const isPdf = isPdfFile(att.name, att.fileType);
-            const isImg = att.fileType === "image" || att.mimeType?.startsWith("image/");
+            const isImg = att.fileType === "image" || att.mimeType.startsWith("image/");
+            const isPdf = att.fileType === "pdf" || att.mimeType === "application/pdf" || att.name.toLowerCase().endsWith(".pdf");
+            const isPy = att.name.toLowerCase().endsWith(".py");
+            const isXaml = att.name.toLowerCase().endsWith(".xaml");
 
             return (
               <div
                 key={att.id}
-                className="group relative flex items-center gap-2 rounded-lg border border-slate-200 bg-white py-1.5 pl-2 pr-7 shadow-xs transition-all hover:border-slate-300"
+                className="group relative flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-xs transition-all hover:border-slate-300"
               >
-                {/* Visual Icon / Thumbnail */}
-                {isImg ? (
-                  <div className="h-8 w-8 overflow-hidden rounded border border-slate-200 bg-slate-100 shrink-0">
+                {/* Thumbnail / Icon */}
+                <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-100">
+                  {isImg ? (
                     <img
                       src={att.data}
                       alt={att.name}
                       className="h-full w-full object-cover"
-                      referrerPolicy="no-referrer"
                     />
-                  </div>
-                ) : isPdf ? (
-                  <div className="flex h-8 w-8 items-center justify-center rounded bg-red-100 text-red-600 shrink-0">
-                    <FileText className="h-4 w-4" />
-                  </div>
-                ) : isXaml ? (
-                  <div className="flex h-8 w-8 items-center justify-center rounded bg-purple-100 text-purple-700 font-bold text-[10px] shrink-0">
-                    <FileCode className="h-4 w-4 text-purple-600" />
-                  </div>
-                ) : isPy ? (
-                  <div className="flex h-8 w-8 items-center justify-center rounded bg-amber-100 text-amber-700 font-bold text-[10px] shrink-0">
-                    <FileCode className="h-4 w-4 text-amber-700" />
-                  </div>
-                ) : (
-                  <div className="flex h-8 w-8 items-center justify-center rounded bg-slate-100 text-slate-700 shrink-0">
-                    <GenericFileIcon className="h-4 w-4" />
-                  </div>
-                )}
+                  ) : isPdf ? (
+                    <div className="flex h-full w-full items-center justify-center bg-red-100 text-red-600">
+                      <FileText className="h-5 w-5" />
+                    </div>
+                  ) : isXaml ? (
+                    <div className="flex h-full w-full items-center justify-center bg-purple-100 text-purple-700">
+                      <FileCode className="h-5 w-5" />
+                    </div>
+                  ) : isPy ? (
+                    <div className="flex h-full w-full items-center justify-center bg-amber-100 text-amber-700">
+                      <FileCode className="h-5 w-5" />
+                    </div>
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center bg-blue-100 text-blue-600">
+                      <GenericFileIcon className="h-5 w-5" />
+                    </div>
+                  )}
+                </div>
 
                 {/* File details */}
                 <div className="flex flex-col min-w-0 max-w-[140px] sm:max-w-[180px]">
@@ -367,8 +321,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           onPaste={handlePaste}
           placeholder={
             enableThinking
-              ? "Hỏi bài toán, yêu cầu đọc tệp .xaml / .py / PDF hoặc suy luận sâu... (kéo thả hoặc dán tệp trực tiếp)"
-              : "Hỏi Gemini bất kỳ điều gì, hoặc kéo thả tệp .xaml, .py, PDF, hình ảnh, mã nguồn..."
+              ? "Hỏi bài toán, yêu cầu đọc tệp .xaml / .py / PDF, tin tức thời sự hoặc suy luận sâu..."
+              : "Hỏi Gemini ngày tháng, tin tức trực tuyến, đính kèm .xaml, .py, PDF, ảnh..."
           }
           rows={1}
           className="max-h-48 w-full resize-none bg-transparent px-4 pt-3.5 pb-12 text-sm text-slate-900 placeholder-slate-400 focus:outline-none"
@@ -376,7 +330,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
 
         {/* Action bar inside textarea */}
         <div className="absolute bottom-2 inset-x-2 flex items-center justify-between">
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
             {/* Hidden file input accepting images, pdfs, xaml, and code/text */}
             <input
               ref={fileInputRef}
@@ -394,10 +348,30 @@ export const ChatInput: React.FC<ChatInputProps> = ({
               id="btn-attach-files"
               onClick={() => fileInputRef.current?.click()}
               title="Đính kèm tệp (.xaml, .py, PDF, Code, Ảnh) hoặc Dán (Ctrl+V)"
-              className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold text-slate-700 whitespace-nowrap shrink-0 transition-colors hover:bg-slate-100 active:scale-95 cursor-pointer"
+              className="flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs font-semibold text-slate-700 whitespace-nowrap shrink-0 transition-colors hover:bg-slate-100 active:scale-95 cursor-pointer"
             >
               <Paperclip className="h-4 w-4 text-blue-600 shrink-0" />
-              <span className="hidden sm:inline whitespace-nowrap">Đính kèm .xaml / .py / PDF / Ảnh</span>
+              <span className="hidden sm:inline whitespace-nowrap">Đính kèm tệp</span>
+            </button>
+
+            {/* Google Search Grounding toggle */}
+            <button
+              type="button"
+              id="btn-input-toggle-search"
+              onClick={() => onToggleSearch && onToggleSearch(!enableSearch)}
+              title={
+                enableSearch
+                  ? "Đang BẬT Google Search: AI tự động tra cứu dữ liệu thực tế và tin tức mới nhất từ Google"
+                  : "Đang TẮT Google Search: Bấm để bật tính năng tìm kiếm mạng"
+              }
+              className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold whitespace-nowrap shrink-0 transition-all cursor-pointer ${
+                enableSearch
+                  ? "bg-emerald-100 text-emerald-900 border border-emerald-300"
+                  : "text-slate-600 hover:bg-slate-100"
+              }`}
+            >
+              <Globe className={`h-4 w-4 shrink-0 ${enableSearch ? "text-emerald-700" : "text-slate-400"}`} />
+              <span className="hidden sm:inline whitespace-nowrap">Google Search</span>
             </button>
 
             {/* Quick High Thinking toggle */}

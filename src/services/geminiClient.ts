@@ -1,16 +1,50 @@
 import { GoogleGenAI, ThinkingLevel } from "@google/genai";
-import { ChatImage } from "../types";
+import { ChatImage, GroundingChunk } from "../types";
 
 export interface StreamChatParams {
   prompt: string;
   history?: { role: "user" | "model"; text: string; images?: ChatImage[] }[];
   images?: ChatImage[];
   enableThinking?: boolean;
+  enableSearch?: boolean;
   model?: string;
   systemInstruction?: string;
   customApiKey?: string;
-  onChunk: (chunk: { text: string; thought?: string; model?: string; fallbackReason?: string }) => void;
+  onChunk: (chunk: {
+    text: string;
+    thought?: string;
+    model?: string;
+    fallbackReason?: string;
+    groundingSources?: GroundingChunk[];
+    webSearchQueries?: string[];
+  }) => void;
   signal?: AbortSignal;
+}
+
+// Generate real-time context containing today's exact date, time, year, and weekday
+function getRealtimeSystemInstruction(userCustomInstruction?: string): string {
+  const now = new Date();
+  const formattedDate = now.toLocaleDateString("vi-VN", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  const formattedTime = now.toLocaleTimeString("vi-VN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+
+  const timeContext = `[THÔNG TIN THỜI GIAN THỰC HỆ THỐNG]:
+- Hôm nay là: ${formattedDate}
+- Thời gian hiện tại: ${formattedTime} (Năm ${now.getFullYear()})
+Bạn là trợ lý AI thông minh sử dụng mô hình Gemini mới nhất của Google. Bạn luôn nắm bắt chính xác ngày giờ hiện tại, thông tin và sự kiện mới nhất. Khi người dùng hỏi về thời gian, ngày tháng, tin tức, thời tiết hoặc dữ liệu hiện tại, hãy sử dụng mốc thời gian này và tìm kiếm thông tin mới nhất trên Google để trả lời chính xác.`;
+
+  if (userCustomInstruction && userCustomInstruction.trim()) {
+    return `${timeContext}\n\n[HƯỚNG DẪN TÙY BIẾN CỦA NGƯỜI DÙNG]:\n${userCustomInstruction.trim()}`;
+  }
+  return timeContext;
 }
 
 function formatSdkAttachment(att: ChatImage) {
@@ -130,6 +164,7 @@ async function streamDirectGemini(params: StreamChatParams) {
     history = [],
     images = [],
     enableThinking = false,
+    enableSearch = true,
     model = "gemini-3.6-flash",
     systemInstruction,
     customApiKey,
@@ -143,9 +178,12 @@ async function streamDirectGemini(params: StreamChatParams) {
   const ai = new GoogleGenAI({ apiKey: customApiKey });
   const contents = formatSdkContents(prompt, history, images);
 
-  const configPayload: any = {};
-  if (systemInstruction && systemInstruction.trim()) {
-    configPayload.systemInstruction = systemInstruction.trim();
+  const configPayload: any = {
+    systemInstruction: getRealtimeSystemInstruction(systemInstruction),
+  };
+
+  if (enableSearch !== false) {
+    configPayload.tools = [{ googleSearch: {} }];
   }
 
   if (enableThinking) {
@@ -183,10 +221,29 @@ async function streamDirectGemini(params: StreamChatParams) {
         textChunk = chunk.text;
       }
 
+      const groundingMetadata = chunk.candidates?.[0]?.groundingMetadata;
+      let groundingSources: GroundingChunk[] | undefined;
+      let webSearchQueries: string[] | undefined;
+
+      if (groundingMetadata?.groundingChunks && Array.isArray(groundingMetadata.groundingChunks)) {
+        groundingSources = groundingMetadata.groundingChunks
+          .map((c: any) => ({
+            title: c.web?.title || c.title || "Trang web",
+            uri: c.web?.uri || c.uri || "",
+          }))
+          .filter((s: any) => s.uri);
+      }
+
+      if (groundingMetadata?.webSearchQueries && Array.isArray(groundingMetadata.webSearchQueries)) {
+        webSearchQueries = groundingMetadata.webSearchQueries;
+      }
+
       onChunk({
         text: textChunk,
         thought: thoughtChunk,
         model: activeModelUsed,
+        groundingSources: groundingSources && groundingSources.length > 0 ? groundingSources : undefined,
+        webSearchQueries: webSearchQueries && webSearchQueries.length > 0 ? webSearchQueries : undefined,
       });
     }
   } catch (err: any) {
@@ -216,11 +273,30 @@ async function streamDirectGemini(params: StreamChatParams) {
           textChunk = chunk.text;
         }
 
+        const groundingMetadata = chunk.candidates?.[0]?.groundingMetadata;
+        let groundingSources: GroundingChunk[] | undefined;
+        let webSearchQueries: string[] | undefined;
+
+        if (groundingMetadata?.groundingChunks && Array.isArray(groundingMetadata.groundingChunks)) {
+          groundingSources = groundingMetadata.groundingChunks
+            .map((c: any) => ({
+              title: c.web?.title || c.title || "Trang web",
+              uri: c.web?.uri || c.uri || "",
+            }))
+            .filter((s: any) => s.uri);
+        }
+
+        if (groundingMetadata?.webSearchQueries && Array.isArray(groundingMetadata.webSearchQueries)) {
+          webSearchQueries = groundingMetadata.webSearchQueries;
+        }
+
         onChunk({
           text: textChunk,
           thought: thoughtChunk,
           model: "gemini-3.6-flash",
           fallbackReason,
+          groundingSources: groundingSources && groundingSources.length > 0 ? groundingSources : undefined,
+          webSearchQueries: webSearchQueries && webSearchQueries.length > 0 ? webSearchQueries : undefined,
         });
       }
     } else {
@@ -251,6 +327,7 @@ export async function sendChatMessage(params: StreamChatParams): Promise<void> {
         size: img.size,
       })),
       enableThinking: params.enableThinking,
+      enableSearch: params.enableSearch !== false,
       model: params.model,
       systemInstruction: params.systemInstruction || undefined,
     };
@@ -305,6 +382,8 @@ export async function sendChatMessage(params: StreamChatParams): Promise<void> {
           thought: parsed.thought || "",
           model: parsed.model,
           fallbackReason: parsed.fallbackReason,
+          groundingSources: parsed.groundingSources,
+          webSearchQueries: parsed.webSearchQueries,
         });
       }
     }

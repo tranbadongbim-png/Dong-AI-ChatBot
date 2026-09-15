@@ -56,6 +56,34 @@ interface ChatHistoryItem {
   images?: AttachmentPayload[];
 }
 
+// Generate real-time context containing today's exact date, time, year, and weekday
+function getRealtimeSystemInstruction(userCustomInstruction?: string): string {
+  const now = new Date();
+  const formattedDate = now.toLocaleDateString("vi-VN", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  const formattedTime = now.toLocaleTimeString("vi-VN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  const isoTime = now.toISOString();
+
+  const timeContext = `[THÔNG TIN THỜI GIAN THỰC HỆ THỐNG]:
+- Hôm nay là: ${formattedDate}
+- Thời gian hiện tại: ${formattedTime} (ISO: ${isoTime})
+- Năm hiện tại: ${now.getFullYear()}
+Bạn là trợ lý AI thông minh sử dụng mô hình Gemini mới nhất của Google. Bạn luôn nắm bắt chính xác ngày giờ hiện tại, thông tin và sự kiện mới nhất. Khi người dùng hỏi về thời gian, ngày tháng, tin tức, thời tiết hoặc dữ liệu hiện tại, hãy sử dụng mốc thời gian này và tìm kiếm thông tin mới nhất trên Google để trả lời chính xác.`;
+
+  if (userCustomInstruction && userCustomInstruction.trim()) {
+    return `${timeContext}\n\n[HƯỚNG DẪN TÙY BIẾN CỦA NGƯỜI DÙNG]:\n${userCustomInstruction.trim()}`;
+  }
+  return timeContext;
+}
+
 // Helper to format an individual attachment (image, pdf, or code/text) into a Gemini Part
 function formatAttachmentPart(att: AttachmentPayload) {
   // If it's a code or text file, inject directly as structured text for optimal reasoning
@@ -69,7 +97,8 @@ function formatAttachmentPart(att: AttachmentPayload) {
     if (!codeText && att.data) {
       if (att.data.includes(",")) {
         try {
-          codeText = Buffer.from(att.data.split(",")[1], "base64").toString("utf-8");
+          const b64 = att.data.split(",")[1];
+          codeText = Buffer.from(b64, "base64").toString("utf-8");
         } catch {
           codeText = att.data;
         }
@@ -83,18 +112,29 @@ function formatAttachmentPart(att: AttachmentPayload) {
     };
   }
 
-  // Binary / Media files (PDF, Images)
-  const base64Data = att.data?.includes(",")
-    ? att.data.split(",")[1]
-    : att.data || "";
-
-  let mimeType = att.mimeType;
-  if (!mimeType) {
-    if (att.name?.toLowerCase().endsWith(".pdf")) {
-      mimeType = "application/pdf";
-    } else {
-      mimeType = "image/jpeg";
+  // Handle PDF
+  if (att.mimeType === "application/pdf" || att.name?.toLowerCase().endsWith(".pdf")) {
+    let b64 = att.data || "";
+    if (b64.includes(",")) {
+      b64 = b64.split(",")[1];
     }
+    return {
+      inlineData: {
+        data: b64,
+        mimeType: "application/pdf",
+      },
+    };
+  }
+
+  // Fallback for Images
+  let base64Data = att.data || "";
+  let mimeType = att.mimeType || "image/jpeg";
+
+  if (base64Data.startsWith("data:")) {
+    const parts = base64Data.split(",");
+    const match = parts[0].match(/:(.*?);/);
+    if (match) mimeType = match[1];
+    base64Data = parts[1] || "";
   }
 
   return {
@@ -105,7 +145,7 @@ function formatAttachmentPart(att: AttachmentPayload) {
   };
 }
 
-// Helper to format messages into Gemini SDK contents
+// Convert history and current prompt/images into Gemini API contents structure
 function formatContents(
   prompt: string,
   history: ChatHistoryItem[] = [],
@@ -113,28 +153,29 @@ function formatContents(
 ) {
   const contents: any[] = [];
 
-  // Add conversation history if present
-  if (history && history.length > 0) {
-    for (const msg of history) {
-      const parts: any[] = [];
-      if (msg.images && msg.images.length > 0) {
-        for (const img of msg.images) {
-          parts.push(formatAttachmentPart(img));
-        }
+  // Add historical turns
+  for (const item of history) {
+    const parts: any[] = [];
+
+    if (item.images && item.images.length > 0) {
+      for (const img of item.images) {
+        parts.push(formatAttachmentPart(img));
       }
-      if (msg.text) {
-        parts.push({ text: msg.text });
-      }
-      if (parts.length > 0) {
-        contents.push({
-          role: msg.role === "user" ? "user" : "model",
-          parts,
-        });
-      }
+    }
+
+    if (item.text && item.text.trim()) {
+      parts.push({ text: item.text.trim() });
+    }
+
+    if (parts.length > 0) {
+      contents.push({
+        role: item.role === "user" ? "user" : "model",
+        parts,
+      });
     }
   }
 
-  // Current user turn
+  // Add current prompt and images as final user turn
   const currentParts: any[] = [];
   if (images && images.length > 0) {
     for (const img of images) {
@@ -190,6 +231,7 @@ app.post("/api/gemini/stream", async (req, res) => {
     history = [],
     images = [],
     enableThinking = false,
+    enableSearch = true,
     model = "gemini-3.6-flash",
     systemInstruction,
   } = req.body;
@@ -208,21 +250,23 @@ app.post("/api/gemini/stream", async (req, res) => {
   const ai = getAIClient();
   const contents = formatContents(prompt, history, images);
 
-  // Models to attempt: requested model first
   let requestedModel = model || "gemini-3.6-flash";
   let targetModel = requestedModel;
   let fallbackReason = "";
 
-  const configPayload: any = {};
-  if (systemInstruction && typeof systemInstruction === "string" && systemInstruction.trim()) {
-    configPayload.systemInstruction = systemInstruction.trim();
+  const configPayload: any = {
+    systemInstruction: getRealtimeSystemInstruction(systemInstruction),
+  };
+
+  // Enable Google Search Grounding by default or when requested
+  if (enableSearch !== false) {
+    configPayload.tools = [{ googleSearch: {} }];
   }
 
   if (enableThinking) {
     configPayload.thinkingConfig = {
       thinkingLevel: ThinkingLevel.HIGH,
     };
-    // Do NOT set maxOutputTokens when thinking is enabled
   }
 
   // Attempt streaming with fallback
@@ -300,12 +344,32 @@ app.post("/api/gemini/stream", async (req, res) => {
         textChunk = chunk.text;
       }
 
+      // Extract grounding sources & search queries
+      const groundingMetadata = chunk.candidates?.[0]?.groundingMetadata;
+      let groundingSources: { title: string; uri: string }[] | undefined;
+      let webSearchQueries: string[] | undefined;
+
+      if (groundingMetadata?.groundingChunks && Array.isArray(groundingMetadata.groundingChunks)) {
+        groundingSources = groundingMetadata.groundingChunks
+          .map((c: any) => ({
+            title: c.web?.title || c.title || "Trang web",
+            uri: c.web?.uri || c.uri || "",
+          }))
+          .filter((s: any) => s.uri);
+      }
+
+      if (groundingMetadata?.webSearchQueries && Array.isArray(groundingMetadata.webSearchQueries)) {
+        webSearchQueries = groundingMetadata.webSearchQueries;
+      }
+
       hasSentAnyData = true;
       const payload = {
         text: textChunk,
         thought: thoughtChunk,
         model: activeModelUsed,
         fallbackReason: fallbackReason || undefined,
+        groundingSources: groundingSources && groundingSources.length > 0 ? groundingSources : undefined,
+        webSearchQueries: webSearchQueries && webSearchQueries.length > 0 ? webSearchQueries : undefined,
       };
 
       res.write(`data: ${JSON.stringify(payload)}\n\n`);
@@ -355,11 +419,30 @@ app.post("/api/gemini/stream", async (req, res) => {
             textChunk = chunk.text;
           }
 
+          const groundingMetadata = chunk.candidates?.[0]?.groundingMetadata;
+          let groundingSources: { title: string; uri: string }[] | undefined;
+          let webSearchQueries: string[] | undefined;
+
+          if (groundingMetadata?.groundingChunks && Array.isArray(groundingMetadata.groundingChunks)) {
+            groundingSources = groundingMetadata.groundingChunks
+              .map((c: any) => ({
+                title: c.web?.title || c.title || "Trang web",
+                uri: c.web?.uri || c.uri || "",
+              }))
+              .filter((s: any) => s.uri);
+          }
+
+          if (groundingMetadata?.webSearchQueries && Array.isArray(groundingMetadata.webSearchQueries)) {
+            webSearchQueries = groundingMetadata.webSearchQueries;
+          }
+
           const payload = {
             text: textChunk,
             thought: thoughtChunk,
             model: activeModelUsed,
             fallbackReason,
+            groundingSources: groundingSources && groundingSources.length > 0 ? groundingSources : undefined,
+            webSearchQueries: webSearchQueries && webSearchQueries.length > 0 ? webSearchQueries : undefined,
           };
 
           res.write(`data: ${JSON.stringify(payload)}\n\n`);
@@ -387,6 +470,7 @@ app.post("/api/gemini/generate", async (req, res) => {
     history = [],
     images = [],
     enableThinking = false,
+    enableSearch = true,
     model = "gemini-3.6-flash",
     systemInstruction,
   } = req.body;
@@ -400,10 +484,12 @@ app.post("/api/gemini/generate", async (req, res) => {
     const ai = getAIClient();
 
     let targetModel = model || "gemini-3.6-flash";
-    const configPayload: any = {};
+    const configPayload: any = {
+      systemInstruction: getRealtimeSystemInstruction(systemInstruction),
+    };
 
-    if (systemInstruction && typeof systemInstruction === "string" && systemInstruction.trim()) {
-      configPayload.systemInstruction = systemInstruction.trim();
+    if (enableSearch !== false) {
+      configPayload.tools = [{ googleSearch: {} }];
     }
 
     if (enableThinking) {
@@ -471,11 +557,30 @@ app.post("/api/gemini/generate", async (req, res) => {
       mainText = response.text;
     }
 
+    const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
+    let groundingSources: { title: string; uri: string }[] | undefined;
+    let webSearchQueries: string[] | undefined;
+
+    if (groundingMetadata?.groundingChunks && Array.isArray(groundingMetadata.groundingChunks)) {
+      groundingSources = groundingMetadata.groundingChunks
+        .map((c: any) => ({
+          title: c.web?.title || c.title || "Trang web",
+          uri: c.web?.uri || c.uri || "",
+        }))
+        .filter((s: any) => s.uri);
+    }
+
+    if (groundingMetadata?.webSearchQueries && Array.isArray(groundingMetadata.webSearchQueries)) {
+      webSearchQueries = groundingMetadata.webSearchQueries;
+    }
+
     res.json({
       text: mainText,
       thought: thoughtText,
       model: activeModel,
       fallbackNotice: fallbackNotice || undefined,
+      groundingSources: groundingSources && groundingSources.length > 0 ? groundingSources : undefined,
+      webSearchQueries: webSearchQueries && webSearchQueries.length > 0 ? webSearchQueries : undefined,
       usage: response.usageMetadata,
     });
   } catch (error: any) {

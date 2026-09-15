@@ -13,7 +13,12 @@ const STORAGE_KEY_PREFIX = "gemini_36_sessions_";
 const CURRENT_USER_KEY = "gemini_current_user_v1";
 const API_KEY_STORAGE = "gemini_custom_api_key_v1";
 
-function createNewSession(enableThinking: boolean, model: string, userId?: string): ChatSession {
+function createNewSession(
+  enableThinking: boolean,
+  model: string,
+  userId?: string,
+  enableSearch: boolean = true
+): ChatSession {
   return {
     id: "session_" + Date.now().toString(36),
     title: "Đoạn chat mới",
@@ -22,6 +27,7 @@ function createNewSession(enableThinking: boolean, model: string, userId?: strin
     updatedAt: Date.now(),
     model: model || "gemini-3.6-flash",
     enableThinking,
+    enableSearch,
     userId,
   };
 }
@@ -63,7 +69,7 @@ export default function App() {
     } catch (e) {
       console.error("Failed to load sessions", e);
     }
-    return [createNewSession(false, "gemini-3.6-flash")];
+    return [createNewSession(false, "gemini-3.6-flash", undefined, true)];
   });
 
   const [activeSessionId, setActiveSessionId] = useState<string>(
@@ -71,6 +77,7 @@ export default function App() {
   );
 
   const [enableThinking, setEnableThinking] = useState<boolean>(false);
+  const [enableSearch, setEnableSearch] = useState<boolean>(true);
   const [selectedModel, setSelectedModel] = useState<string>("gemini-3.6-flash");
   const [systemInstruction, setSystemInstruction] = useState<string>("");
   const [customApiKey, setCustomApiKey] = useState<string>(() => {
@@ -93,7 +100,7 @@ export default function App() {
     sessions.find((s) => s.id === activeSessionId) || sessions[0];
   const messages = activeSession ? activeSession.messages : [];
 
-  // Sync activeSession model and thinking when activeSessionId changes
+  // Sync activeSession model, search, and thinking when activeSessionId changes
   useEffect(() => {
     if (activeSession) {
       if (activeSession.model) {
@@ -105,6 +112,11 @@ export default function App() {
       }
       if (typeof activeSession.enableThinking === "boolean") {
         setEnableThinking(activeSession.enableThinking);
+      }
+      if (typeof activeSession.enableSearch === "boolean") {
+        setEnableSearch(activeSession.enableSearch);
+      } else {
+        setEnableSearch(true);
       }
     }
   }, [activeSessionId]);
@@ -123,6 +135,16 @@ export default function App() {
     setSessions((prev) =>
       prev.map((s) =>
         s.id === activeSessionId ? { ...s, enableThinking: enabled } : s
+      )
+    );
+  };
+
+  // Search toggle handler
+  const handleToggleSearch = (enabled: boolean) => {
+    setEnableSearch(enabled);
+    setSessions((prev) =>
+      prev.map((s) =>
+        s.id === activeSessionId ? { ...s, enableSearch: enabled } : s
       )
     );
   };
@@ -153,7 +175,7 @@ export default function App() {
         }
       }
       // If no prior session for this user, keep current or make fresh
-      const fresh = createNewSession(enableThinking, selectedModel, user.id);
+      const fresh = createNewSession(enableThinking, selectedModel, user.id, enableSearch);
       setSessions([fresh]);
       setActiveSessionId(fresh.id);
     } catch (e) {
@@ -175,7 +197,7 @@ export default function App() {
           return;
         }
       }
-      const fresh = createNewSession(enableThinking, selectedModel);
+      const fresh = createNewSession(enableThinking, selectedModel, undefined, enableSearch);
       setSessions([fresh]);
       setActiveSessionId(fresh.id);
     } catch (e) {
@@ -234,10 +256,13 @@ export default function App() {
     prompt: string,
     images: ChatImage[] = [],
     forcedThinking?: boolean,
-    forcedModel?: string
+    forcedModel?: string,
+    forcedSearch?: boolean
   ) => {
     const isThinkingMode =
       typeof forcedThinking === "boolean" ? forcedThinking : enableThinking;
+    const isSearchMode =
+      typeof forcedSearch === "boolean" ? forcedSearch : enableSearch;
     const modelToUse = forcedModel || selectedModel || "gemini-3.6-flash";
 
     const userMessage: ChatMessage = {
@@ -276,19 +301,24 @@ export default function App() {
 
       let accumulatedText = "";
       let accumulatedThought = "";
+      let latestGroundingSources = undefined as any;
+      let latestWebSearchQueries = undefined as any;
 
       await sendChatMessage({
         prompt,
         history,
         images,
         enableThinking: isThinkingMode,
+        enableSearch: isSearchMode,
         model: modelToUse,
         systemInstruction,
         customApiKey,
         signal: abortController.signal,
-        onChunk: ({ text, thought, model, fallbackReason }) => {
+        onChunk: ({ text, thought, model, fallbackReason, groundingSources, webSearchQueries }) => {
           if (text) accumulatedText += text;
           if (thought) accumulatedThought += thought;
+          if (groundingSources) latestGroundingSources = groundingSources;
+          if (webSearchQueries) latestWebSearchQueries = webSearchQueries;
 
           updateActiveSessionMessages((prev) =>
             prev.map((msg) =>
@@ -299,6 +329,8 @@ export default function App() {
                     thoughtProcess: accumulatedThought,
                     modelUsed: model || msg.modelUsed,
                     fallbackReason: fallbackReason || msg.fallbackReason,
+                    groundingSources: latestGroundingSources || msg.groundingSources,
+                    webSearchQueries: latestWebSearchQueries || msg.webSearchQueries,
                     isStreaming: true,
                   }
                 : msg
@@ -315,6 +347,8 @@ export default function App() {
                 ...msg,
                 content: accumulatedText || "Đã nhận phản hồi từ Gemini.",
                 thoughtProcess: accumulatedThought,
+                groundingSources: latestGroundingSources || msg.groundingSources,
+                webSearchQueries: latestWebSearchQueries || msg.webSearchQueries,
                 isStreaming: false,
               }
             : msg
@@ -361,82 +395,108 @@ export default function App() {
     }
   };
 
-  const handleNewSession = () => {
-    const newSess = createNewSession(enableThinking, selectedModel, currentUser?.id);
-    setSessions((prev) => [newSess, ...prev]);
-    setActiveSessionId(newSess.id);
-  };
+  const handleRegenerateLast = () => {
+    if (isLoading || messages.length === 0) return;
 
-  const handleDeleteSession = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setSessions((prev) => {
-      const filtered = prev.filter((s) => s.id !== id);
-      if (filtered.length === 0) {
-        const fresh = createNewSession(enableThinking, selectedModel, currentUser?.id);
-        setActiveSessionId(fresh.id);
-        return [fresh];
-      }
-      if (activeSessionId === id) {
-        setActiveSessionId(filtered[0].id);
-      }
-      return filtered;
-    });
-  };
+    // Find the last model message and the user prompt preceding it
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg.role !== "model") return;
 
-  const handleRenameSession = (id: string, newTitle: string) => {
-    if (!newTitle.trim()) return;
+    // Remove last model message
+    const trimmed = messages.slice(0, -1);
+    const lastUserMsg = trimmed[trimmed.length - 1];
+
+    if (!lastUserMsg || lastUserMsg.role !== "user") return;
+
+    // Remove last user message as well because handleSendMessage will append it
+    const historyBeforeLastUser = trimmed.slice(0, -1);
+
     setSessions((prev) =>
       prev.map((s) =>
-        s.id === id
-          ? {
-              ...s,
-              title: newTitle.trim(),
-              updatedAt: Date.now(),
-            }
+        s.id === activeSessionId
+          ? { ...s, messages: historyBeforeLastUser, updatedAt: Date.now() }
           : s
       )
     );
+
+    // Resend
+    handleSendMessage(
+      lastUserMsg.content,
+      lastUserMsg.images,
+      enableThinking,
+      selectedModel,
+      enableSearch
+    );
   };
 
-  const handleClearCurrentChat = () => {
+  const handleNewSession = () => {
+    if (isLoading) return;
+    const newSession = createNewSession(
+      enableThinking,
+      selectedModel,
+      currentUser?.id,
+      enableSearch
+    );
+    setSessions((prev) => [newSession, ...prev]);
+    setActiveSessionId(newSession.id);
+    setIsSidebarOpen(false);
+  };
+
+  const handleSelectSession = (id: string) => {
+    if (isLoading) return;
+    setActiveSessionId(id);
+    setIsSidebarOpen(false);
+  };
+
+  const handleDeleteSession = (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (sessions.length <= 1) {
+      const fresh = createNewSession(
+        enableThinking,
+        selectedModel,
+        currentUser?.id,
+        enableSearch
+      );
+      setSessions([fresh]);
+      setActiveSessionId(fresh.id);
+      return;
+    }
+    const filtered = sessions.filter((s) => s.id !== id);
+    setSessions(filtered);
+    if (activeSessionId === id) {
+      setActiveSessionId(filtered[0].id);
+    }
+  };
+
+  const handleRenameSession = (id: string, newTitle: string) => {
+    setSessions((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, title: newTitle, updatedAt: Date.now() } : s))
+    );
+  };
+
+  const handleClearChat = () => {
+    if (isLoading) return;
     updateActiveSessionMessages(() => []);
   };
 
   const handleSelectPreset = (preset: PresetPrompt) => {
-    if (preset.enableThinking) {
-      handleToggleThinking(true);
-    }
+    if (isLoading) return;
     handleSendMessage(
       preset.prompt,
       [],
       preset.enableThinking,
-      preset.model
+      preset.model,
+      true
     );
   };
 
-  const handleRegenerateLast = () => {
-    if (messages.length < 2) return;
-    let lastUserMsg: ChatMessage | null = null;
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].role === "user") {
-        lastUserMsg = messages[i];
-        break;
-      }
-    }
-    if (!lastUserMsg) return;
-
-    // Remove last model message
-    updateActiveSessionMessages((prev) => prev.slice(0, -1));
-    handleSendMessage(lastUserMsg.content, lastUserMsg.images || []);
-  };
-
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-slate-50 font-sans text-slate-900 antialiased">
-      {/* Sidebar for session management */}
+    <div className="flex h-screen w-screen overflow-hidden bg-slate-50 font-sans text-slate-800 antialiased selection:bg-blue-100 selection:text-blue-900">
+      {/* Sidebar */}
       <Sidebar
         sessions={sessions}
         activeSessionId={activeSessionId}
-        onSelectSession={setActiveSessionId}
+        onSelectSession={handleSelectSession}
         onNewSession={handleNewSession}
         onDeleteSession={handleDeleteSession}
         onRenameSession={handleRenameSession}
@@ -446,27 +506,27 @@ export default function App() {
         onToggleThinking={handleToggleThinking}
       />
 
-      {/* Main Chat Area */}
-      <div className="flex flex-1 flex-col overflow-hidden bg-white min-w-0">
+      {/* Main Container */}
+      <div className="flex flex-1 flex-col h-full overflow-hidden min-w-0 bg-white shadow-xs">
         {/* Top Header */}
         <Header
-          enableThinking={enableThinking}
-          onToggleThinking={handleToggleThinking}
           selectedModel={selectedModel}
           onSelectModel={handleSelectModel}
+          enableThinking={enableThinking}
+          onToggleThinking={handleToggleThinking}
           onNewChat={handleNewSession}
-          onClearChat={handleClearCurrentChat}
-          onOpenSettings={() => setIsSettingsOpen(true)}
+          onClearChat={handleClearChat}
           onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
+          onOpenSettings={() => setIsSettingsOpen(true)}
           hasMessages={messages.length > 0}
-          hasApiKey={Boolean(customApiKey && customApiKey.trim())}
+          hasApiKey={Boolean(customApiKey)}
           currentUser={currentUser}
           onOpenGoogleAuth={() => setIsGoogleAuthOpen(true)}
         />
 
-        {/* Messages List / Empty State */}
+        {/* Message View Area */}
         <main
-          id="chat-messages-container"
+          id="chat-messages-scroll-area"
           className="flex-1 overflow-y-auto px-3 sm:px-4 py-4 sm:py-6 scroll-smooth min-h-0"
         >
           {messages.length === 0 ? (
@@ -501,6 +561,8 @@ export default function App() {
           isLoading={isLoading}
           enableThinking={enableThinking}
           onToggleThinking={handleToggleThinking}
+          enableSearch={enableSearch}
+          onToggleSearch={handleToggleSearch}
         />
       </div>
 

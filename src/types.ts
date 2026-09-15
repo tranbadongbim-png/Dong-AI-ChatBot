@@ -10,6 +10,11 @@ export interface ChatImage {
 
 export type ChatAttachment = ChatImage;
 
+export interface GroundingChunk {
+  title: string;
+  uri: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: "user" | "model";
@@ -21,6 +26,8 @@ export interface ChatMessage {
   fallbackReason?: string;
   isStreaming?: boolean;
   error?: boolean;
+  groundingSources?: GroundingChunk[];
+  webSearchQueries?: string[];
 }
 
 export interface ChatSession {
@@ -31,6 +38,7 @@ export interface ChatSession {
   updatedAt: number;
   model: string;
   enableThinking: boolean;
+  enableSearch?: boolean;
   systemInstruction?: string;
   userId?: string;
 }

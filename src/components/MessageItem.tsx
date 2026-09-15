@@ -13,10 +13,11 @@ import {
   AlertCircle,
   User,
   RotateCcw,
-  Zap,
   FileText,
   FileCode,
-  File as GenericFileIcon,
+  Globe,
+  ExternalLink,
+  Search,
 } from "lucide-react";
 import { ChatMessage } from "../types";
 
@@ -36,6 +37,15 @@ const getModelDisplayName = (modelId?: string) => {
     .replace(/^models\//, "")
     .replace(/-/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());
+};
+
+const extractDomain = (urlStr: string): string => {
+  try {
+    const url = new URL(urlStr);
+    return url.hostname.replace(/^www\./, "");
+  } catch {
+    return urlStr;
+  }
 };
 
 export const MessageItem: React.FC<MessageItemProps> = ({
@@ -145,6 +155,12 @@ export const MessageItem: React.FC<MessageItemProps> = ({
                 Thinking Mode
               </span>
             )}
+            {(message.groundingSources && message.groundingSources.length > 0) && (
+              <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 border border-emerald-200">
+                <Globe className="h-3 w-3 text-emerald-600" />
+                Google Search
+              </span>
+            )}
             {isStreaming && (
               <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700 border border-blue-200 animate-pulse">
                 <span className="h-1.5 w-1.5 rounded-full bg-blue-600 animate-ping" />
@@ -154,7 +170,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
           </div>
         )}
 
-        {/* User attached files (Images, PDFs, Python, Code) */}
+        {/* User attached files (Images, PDFs, Python, Code, XAML) */}
         {message.images && message.images.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-1">
             {message.images.map((img) => {
@@ -254,7 +270,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
 
             <button
               onClick={() => setIsThoughtOpen(!isThoughtOpen)}
-              className="flex w-full items-center justify-between px-3.5 py-2.5 text-left text-xs font-semibold text-amber-950 hover:bg-amber-100/70 transition-colors"
+              className="flex w-full items-center justify-between px-3.5 py-2.5 text-left text-xs font-semibold text-amber-950 hover:bg-amber-100/70 transition-colors cursor-pointer"
             >
               <div className="flex items-center gap-2">
                 <div className="flex h-5 w-5 items-center justify-center rounded-md bg-amber-200/80 text-amber-800">
@@ -286,7 +302,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
           </div>
         )}
 
-        {/* Gemini Thinking Loading State (When model is generating initial thoughts/response) */}
+        {/* Gemini Thinking Loading State */}
         {!isUser && isStreaming && !message.content && !message.thoughtProcess && (
           <div className="relative w-full max-w-md overflow-hidden rounded-2xl border border-blue-200/80 bg-gradient-to-r from-blue-50/90 via-indigo-50/70 to-purple-50/90 p-4 shadow-sm">
             {/* Top animated rainbow border */}
@@ -304,14 +320,14 @@ export const MessageItem: React.FC<MessageItemProps> = ({
               <div className="flex-1">
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-bold text-slate-900">
-                    Gemini đang suy nghĩ...
+                    Gemini đang suy nghĩ & tìm kiếm...
                   </span>
                   <span className="text-[10px] font-medium text-slate-500 font-mono">
                     ({thinkingSeconds > 0 ? `${thinkingSeconds}s` : "..."})
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-600 mt-0.5">
-                  Đang phân tích ngữ cảnh và chuẩn bị câu trả lời tối ưu...
+                  Đang phân tích ngữ cảnh, kết nối dữ liệu mới nhất và tối ưu phản hồi...
                 </p>
               </div>
             </div>
@@ -324,7 +340,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
           </div>
         )}
 
-        {/* Main Text Bubble (only show if content exists or user message) */}
+        {/* Main Text Bubble */}
         {(isUser || message.content || message.error) && (
           <div
             className={`relative rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-xs ${
@@ -405,13 +421,75 @@ export const MessageItem: React.FC<MessageItemProps> = ({
           </div>
         )}
 
+        {/* Google Search Grounding Sources Card (when web search was executed) */}
+        {!isUser && (
+          ((message.webSearchQueries && message.webSearchQueries.length > 0) ||
+           (message.groundingSources && message.groundingSources.length > 0)) && (
+            <div className="w-full mt-1.5 overflow-hidden rounded-xl border border-emerald-200 bg-emerald-50/50 p-3 shadow-xs">
+              <div className="flex items-center gap-2 mb-2 text-xs font-bold text-emerald-900">
+                <Globe className="h-4 w-4 text-emerald-700" />
+                <span>Nguồn thông tin từ Google Search:</span>
+              </div>
+
+              {/* Web Search Queries */}
+              {message.webSearchQueries && message.webSearchQueries.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5 mb-2.5">
+                  <span className="text-[11px] font-medium text-emerald-800 flex items-center gap-1">
+                    <Search className="h-3 w-3 text-emerald-600" />
+                    Đã tìm:
+                  </span>
+                  {message.webSearchQueries.map((query, idx) => (
+                    <span
+                      key={idx}
+                      className="inline-flex items-center rounded-md bg-white px-2 py-0.5 text-[11px] font-semibold text-emerald-900 border border-emerald-200 shadow-2xs"
+                    >
+                      "{query}"
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* Grounding Source Links */}
+              {message.groundingSources && message.groundingSources.length > 0 && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {message.groundingSources.map((source, idx) => {
+                    const domain = extractDomain(source.uri);
+                    return (
+                      <a
+                        key={idx}
+                        href={source.uri}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-white p-2 text-xs text-slate-800 shadow-2xs transition-all hover:border-emerald-400 hover:bg-emerald-50/80 hover:shadow-xs group"
+                      >
+                        <div className="flex h-6 w-6 items-center justify-center rounded-md bg-emerald-100 text-emerald-800 shrink-0 group-hover:bg-emerald-200">
+                          <Globe className="h-3.5 w-3.5" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="font-semibold truncate text-slate-900 text-[11px] group-hover:text-emerald-900">
+                            {source.title || domain}
+                          </p>
+                          <p className="text-[10px] text-slate-400 truncate">
+                            {domain}
+                          </p>
+                        </div>
+                        <ExternalLink className="h-3 w-3 text-slate-400 shrink-0 group-hover:text-emerald-700" />
+                      </a>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )
+        )}
+
         {/* Message Actions */}
         {!isUser && !isStreaming && (
           <div className="mt-1 flex items-center gap-2 px-1 text-slate-500 opacity-90 transition-opacity group-hover:opacity-100">
             <button
               onClick={handleCopy}
               title="Sao chép nội dung"
-              className="flex items-center gap-1 rounded-md px-2 py-1 text-xs hover:bg-slate-100 hover:text-slate-800 transition-colors"
+              className="flex items-center gap-1 rounded-md px-2 py-1 text-xs hover:bg-slate-100 hover:text-slate-800 transition-colors cursor-pointer"
             >
               {copied ? (
                 <>
@@ -432,7 +510,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
               <button
                 onClick={handleSpeak}
                 title={isSpeaking ? "Dừng đọc" : "Đọc nội dung"}
-                className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors ${
+                className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors cursor-pointer ${
                   isSpeaking
                     ? "bg-blue-50 text-blue-600"
                     : "hover:bg-slate-100 hover:text-slate-800"
@@ -458,7 +536,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
               <button
                 onClick={onRegenerate}
                 title="Tạo lại câu trả lời"
-                className="flex items-center gap-1 rounded-md px-2 py-1 text-xs hover:bg-slate-100 hover:text-slate-800 transition-colors"
+                className="flex items-center gap-1 rounded-md px-2 py-1 text-xs hover:bg-slate-100 hover:text-slate-800 transition-colors cursor-pointer"
               >
                 <RotateCcw className="h-3.5 w-3.5 text-slate-500" />
                 <span className="text-[11px]">Tạo lại</span>
