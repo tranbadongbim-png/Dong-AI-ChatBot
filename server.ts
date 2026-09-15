@@ -118,19 +118,27 @@ function formatContents(
 // Helper to extract clean error message
 function extractErrorMessage(error: any): string {
   if (!error) return "Đã xảy ra lỗi không xác định.";
-  if (typeof error === "string") return error;
-  if (error.message) {
+  let rawMsg = typeof error === "string" ? error : error.message || String(error);
+
+  if (typeof error === "object" && error?.message) {
     try {
       const parsed = JSON.parse(error.message);
       if (parsed.error?.message) {
-        return parsed.error.message;
+        rawMsg = parsed.error.message;
       }
     } catch {
-      // Not JSON, use raw message
+      // Not JSON
     }
-    return error.message;
   }
-  return String(error);
+
+  // Handle 429 Quota Exceeded cleanly
+  if (rawMsg.includes("429") || rawMsg.includes("RESOURCE_EXHAUSTED") || rawMsg.includes("Quota exceeded")) {
+    const retryMatch = rawMsg.match(/retry in ([0-9ms\.\s]+)/i) || rawMsg.match(/retryDelay"?:\s*"([0-9a-z]+)"/i);
+    const retryInfo = retryMatch ? ` Vui lòng thử lại sau khoảng ${retryMatch[1]}.` : "";
+    return `Đã vượt quá giới hạn lượt gọi (Quota Exceeded / Rate Limit) của API Key hiện tại.${retryInfo}\n\nMẹo: Bạn có thể tạo thêm API Key miễn phí mới tại aistudio.google.com và dán vào phần Cài đặt (⚙️) trên thanh công cụ để tiếp tục dùng ngay lập tức.`;
+  }
+
+  return rawMsg;
 }
 
 // Streaming chat endpoint using Server-Sent Events (SSE)
@@ -271,7 +279,7 @@ app.post("/api/gemini/stream", async (req, res) => {
       try {
         console.log("Recovering stream with gemini-3.6-flash...");
         activeModelUsed = "gemini-3.6-flash";
-        fallbackReason = "Máy chủ Gemini 3.8 đang bận (503). Đã tự động kết nối qua kênh Gemini 3.6 Flash để phản hồi ngay.";
+        fallbackReason = "Máy chủ bận (503). Đã tự động kết nối qua kênh Gemini 3.6 Flash để phản hồi ngay.";
         
         const fallbackConfig: any = { ...configPayload };
         if (enableThinking) {
@@ -383,7 +391,7 @@ app.post("/api/gemini/generate", async (req, res) => {
         fallbackNotice = is429 && targetModel === "gemini-3.1-pro-preview"
           ? "Mô hình Gemini 3.1 Pro yêu cầu gói trả phí API Key. Đã tự động dùng Gemini 3.6 Flash để trả lời."
           : is503
-          ? "Tự động chuyển kênh dự phòng Gemini 3.6 Flash do máy chủ 3.8 đang quá tải."
+          ? "Tự động chuyển kênh dự phòng Gemini 3.6 Flash do máy chủ đang quá tải."
           : "Tự động chuyển kênh dự phòng Gemini 3.6 Flash.";
         
         const fallbackConfig: any = { ...configPayload };

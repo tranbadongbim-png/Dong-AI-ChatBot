@@ -309,7 +309,7 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-slate-100 font-sans text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100">
+    <div className="flex h-screen w-full overflow-hidden bg-slate-50 font-sans text-slate-900 antialiased">
       {/* Sidebar for session management */}
       <Sidebar
         sessions={sessions}
@@ -324,7 +324,7 @@ export default function App() {
       />
 
       {/* Main Chat Area */}
-      <div className="flex flex-1 flex-col overflow-hidden bg-white dark:bg-slate-900">
+      <div className="flex flex-1 flex-col overflow-hidden bg-white">
         {/* Top Header */}
         <Header
           enableThinking={enableThinking}
@@ -351,7 +351,7 @@ export default function App() {
               onToggleThinking={setEnableThinking}
             />
           ) : (
-            <div className="mx-auto max-w-4xl divide-y divide-slate-100 dark:divide-slate-800/60">
+            <div className="mx-auto max-w-4xl divide-y divide-slate-100">
               {messages.map((message, index) => (
                 <MessageItem
                   key={message.id}

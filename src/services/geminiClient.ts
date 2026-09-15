@@ -72,6 +72,30 @@ function formatSdkContents(
   return contents;
 }
 
+function parseClientError(err: any): string {
+  if (!err) return "Đã xảy ra lỗi không xác định.";
+  let rawMsg = typeof err === "string" ? err : err.message || String(err);
+
+  if (typeof err === "object" && err?.message) {
+    try {
+      const parsed = JSON.parse(err.message);
+      if (parsed.error?.message) {
+        rawMsg = parsed.error.message;
+      }
+    } catch {
+      // Not JSON
+    }
+  }
+
+  if (rawMsg.includes("429") || rawMsg.includes("RESOURCE_EXHAUSTED") || rawMsg.includes("Quota exceeded")) {
+    const retryMatch = rawMsg.match(/retry in ([0-9ms\.\s]+)/i) || rawMsg.match(/retryDelay"?:\s*"([0-9a-z]+)"/i);
+    const retryInfo = retryMatch ? ` Vui lòng chờ khoảng ${retryMatch[1]} rồi bấm "Tạo lại".` : "";
+    return `API Key của bạn đã đạt giới hạn lượt gọi (Free Tier Limit 20 lượt/ngày trên dự án này).${retryInfo}\n\n👉 Giải pháp: Tạo thêm 1 API Key mới miễn phí tại Google AI Studio (aistudio.google.com) và dán vào Cài đặt (⚙️) là tiếp tục chat được ngay!`;
+  }
+
+  return rawMsg;
+}
+
 // Client-side direct Google Gemini SDK (for Cloudflare Pages / Static Hosting)
 async function streamDirectGemini(params: StreamChatParams) {
   const {
@@ -173,7 +197,7 @@ async function streamDirectGemini(params: StreamChatParams) {
         });
       }
     } else {
-      throw err;
+      throw new Error(parseClientError(err));
     }
   }
 }
