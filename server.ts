@@ -38,8 +38,7 @@ app.get("/api/health", (req, res) => {
   res.json({
     status: "ok",
     hasApiKey: hasKey,
-    defaultModel: "gemini-3.8-flash",
-    thinkingModel: "gemini-3.1-pro-preview",
+    defaultModel: "gemini-3.6-flash",
   });
 });
 
@@ -141,7 +140,7 @@ app.post("/api/gemini/stream", async (req, res) => {
     history = [],
     images = [],
     enableThinking = false,
-    model = "gemini-3.8-flash",
+    model = "gemini-3.6-flash",
     systemInstruction,
   } = req.body;
 
@@ -159,8 +158,8 @@ app.post("/api/gemini/stream", async (req, res) => {
   const ai = getAIClient();
   const contents = formatContents(prompt, history, images);
 
-  // Models to attempt: requested model first, fallback if unavailable/quota
-  let requestedModel = model || "gemini-3.8-flash";
+  // Models to attempt: requested model first
+  let requestedModel = model || "gemini-3.6-flash";
   let targetModel = requestedModel;
   let fallbackReason = "";
 
@@ -338,7 +337,7 @@ app.post("/api/gemini/generate", async (req, res) => {
     history = [],
     images = [],
     enableThinking = false,
-    model = "gemini-3.8-flash",
+    model = "gemini-3.6-flash",
     systemInstruction,
   } = req.body;
 
@@ -350,7 +349,7 @@ app.post("/api/gemini/generate", async (req, res) => {
   try {
     const ai = getAIClient();
 
-    let targetModel = model || "gemini-3.8-flash";
+    let targetModel = model || "gemini-3.6-flash";
     const configPayload: any = {};
 
     if (systemInstruction && typeof systemInstruction === "string" && systemInstruction.trim()) {

@@ -8,7 +8,7 @@ import { SettingsModal } from "./components/SettingsModal";
 import { ChatImage, ChatMessage, ChatSession, PresetPrompt } from "./types";
 import { sendChatMessage } from "./services/geminiClient";
 
-const STORAGE_KEY = "gemini_38_sessions_v1";
+const STORAGE_KEY = "gemini_36_sessions_v1";
 const API_KEY_STORAGE = "gemini_custom_api_key_v1";
 
 function createNewSession(enableThinking: boolean, model: string): ChatSession {
@@ -18,7 +18,7 @@ function createNewSession(enableThinking: boolean, model: string): ChatSession {
     messages: [],
     createdAt: Date.now(),
     updatedAt: Date.now(),
-    model: model || "gemini-3.8-flash",
+    model: model || "gemini-3.6-flash",
     enableThinking,
   };
 }
@@ -34,7 +34,7 @@ export default function App() {
     } catch (e) {
       console.error("Failed to load sessions", e);
     }
-    return [createNewSession(false, "gemini-3.8-flash")];
+    return [createNewSession(false, "gemini-3.6-flash")];
   });
 
   const [activeSessionId, setActiveSessionId] = useState<string>(
@@ -42,7 +42,7 @@ export default function App() {
   );
 
   const [enableThinking, setEnableThinking] = useState<boolean>(false);
-  const [selectedModel, setSelectedModel] = useState<string>("gemini-3.8-flash");
+  const [selectedModel, setSelectedModel] = useState<string>("gemini-3.6-flash");
   const [systemInstruction, setSystemInstruction] = useState<string>("");
   const [customApiKey, setCustomApiKey] = useState<string>(() => {
     try {
@@ -127,7 +127,7 @@ export default function App() {
   ) => {
     const isThinkingMode =
       typeof forcedThinking === "boolean" ? forcedThinking : enableThinking;
-    const modelToUse = forcedModel || selectedModel || "gemini-3.8-flash";
+    const modelToUse = forcedModel || selectedModel || "gemini-3.6-flash";
 
     const userMessage: ChatMessage = {
       id: "msg_user_" + Date.now().toString(36),

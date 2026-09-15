@@ -72,14 +72,14 @@ function formatSdkContents(
   return contents;
 }
 
-// Client-side fallback using direct Google Gemini SDK (for Cloudflare Pages / Static Hosting)
+// Client-side direct Google Gemini SDK (for Cloudflare Pages / Static Hosting)
 async function streamDirectGemini(params: StreamChatParams) {
   const {
     prompt,
     history = [],
     images = [],
     enableThinking = false,
-    model = "gemini-2.5-flash",
+    model = "gemini-3.6-flash",
     systemInstruction,
     customApiKey,
     onChunk,
@@ -103,7 +103,7 @@ async function streamDirectGemini(params: StreamChatParams) {
     };
   }
 
-  const targetModel = model || "gemini-2.5-flash";
+  const targetModel = model || "gemini-3.6-flash";
   let activeModelUsed = targetModel;
 
   try {
@@ -139,11 +139,11 @@ async function streamDirectGemini(params: StreamChatParams) {
       });
     }
   } catch (err: any) {
-    // Fallback smoothly to gemini-2.5-flash if requested model hits quota / unavailable
-    if (targetModel !== "gemini-2.5-flash") {
-      const fallbackReason = "Đã tự động đổi sang Gemini 2.5 Flash để đảm bảo kết nối ổn định.";
+    // Fallback smoothly to gemini-3.6-flash if requested model hits quota / unavailable
+    if (targetModel !== "gemini-3.6-flash") {
+      const fallbackReason = "Đã tự động chuyển sang Gemini 3.6 Flash để đảm bảo kết nối ổn định.";
       const streamFallback = await ai.models.generateContentStream({
-        model: "gemini-2.5-flash",
+        model: "gemini-3.6-flash",
         contents,
         config: configPayload,
       });
@@ -168,7 +168,7 @@ async function streamDirectGemini(params: StreamChatParams) {
         onChunk({
           text: textChunk,
           thought: thoughtChunk,
-          model: "gemini-2.5-flash",
+          model: "gemini-3.6-flash",
           fallbackReason,
         });
       }

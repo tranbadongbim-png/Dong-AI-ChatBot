@@ -37,6 +37,6 @@ export interface PresetPrompt {
   description: string;
   prompt: string;
   enableThinking: boolean;
-  model: "gemini-3.8-flash" | "gemini-3.6-flash" | "gemini-3.1-pro-preview";
+  model: "gemini-3.6-flash";
   iconName: string;
 }

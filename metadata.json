@@ -1,6 +1,6 @@
 {
-  "name": "Gemini 3.8 AI Assistant",
-  "description": "Ứng dụng AI thông minh tích hợp Google Gemini 3.8 Flash và chế độ High Thinking (suy luận sâu) cho lập trình, giải toán và phân tích đa phương thức.",
+  "name": "Gemini 3.6 Flash AI Assistant",
+  "description": "Ứng dụng AI Chatbot thông minh sử dụng duy nhất mô hình Google Gemini 3.6 Flash hoàn toàn miễn phí, ổn định và tốc độ cao.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

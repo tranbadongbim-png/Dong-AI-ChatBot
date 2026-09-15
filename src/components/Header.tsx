@@ -48,14 +48,14 @@ export const Header: React.FC<HeaderProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-base font-semibold text-slate-900 dark:text-white">
-                Gemini 3.8
+                Gemini 3.6 Flash
               </h1>
-              <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600 dark:bg-blue-950/60 dark:text-blue-400 border border-blue-200/60 dark:border-blue-800/60">
-                AI Studio
+              <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/60">
+                Miễn phí &amp; Unlimited
               </span>
             </div>
             <p className="hidden text-xs text-slate-500 dark:text-slate-400 sm:block">
-              Google Gemini 3.8 Flash &amp; High Thinking Reasoning
+              Google Gemini 3.6 Flash - Tốc độ cao &amp; Ổn định nhất
             </p>
           </div>
         </div>
@@ -69,7 +69,7 @@ export const Header: React.FC<HeaderProps> = ({
           onClick={() => onToggleThinking(!enableThinking)}
           title={
             enableThinking
-              ? "Chế độ suy luận sâu đang bật (gemini-3.1-pro-preview)"
+              ? "Chế độ suy luận sâu đang bật"
               : "Bật chế độ High Thinking để xử lý câu hỏi phức tạp"
           }
           className={`relative flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-all ${
@@ -95,9 +95,7 @@ export const Header: React.FC<HeaderProps> = ({
             }}
             className="h-8 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 shadow-sm transition-colors hover:border-slate-300 focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
           >
-            <option value="gemini-3.8-flash">Gemini 3.8 Flash (Mới nhất)</option>
-            <option value="gemini-3.6-flash">Gemini 3.6 Flash (Tốc độ cao &amp; Ổn định)</option>
-            <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro (Preview - Cần Paid Key)</option>
+            <option value="gemini-3.6-flash">Gemini 3.6 Flash (Miễn phí &amp; Tốc độ cao)</option>
           </select>
         </div>
 
