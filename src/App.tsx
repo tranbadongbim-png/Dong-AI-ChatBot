@@ -17,7 +17,7 @@ function createNewSession(
   enableThinking: boolean,
   model: string,
   userId?: string,
-  enableSearch: boolean = true
+  enableSearch: boolean = false
 ): ChatSession {
   return {
     id: "session_" + Date.now().toString(36),
@@ -69,7 +69,7 @@ export default function App() {
     } catch (e) {
       console.error("Failed to load sessions", e);
     }
-    return [createNewSession(false, "gemini-3.6-flash", undefined, true)];
+    return [createNewSession(false, "gemini-3.6-flash", undefined, false)];
   });
 
   const [activeSessionId, setActiveSessionId] = useState<string>(
@@ -77,7 +77,7 @@ export default function App() {
   );
 
   const [enableThinking, setEnableThinking] = useState<boolean>(false);
-  const [enableSearch, setEnableSearch] = useState<boolean>(true);
+  const [enableSearch, setEnableSearch] = useState<boolean>(false);
   const [selectedModel, setSelectedModel] = useState<string>("gemini-3.6-flash");
   const [systemInstruction, setSystemInstruction] = useState<string>("");
   const [customApiKey, setCustomApiKey] = useState<string>(() => {
@@ -116,7 +116,7 @@ export default function App() {
       if (typeof activeSession.enableSearch === "boolean") {
         setEnableSearch(activeSession.enableSearch);
       } else {
-        setEnableSearch(true);
+        setEnableSearch(false);
       }
     }
   }, [activeSessionId]);

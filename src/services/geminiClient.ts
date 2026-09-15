@@ -227,7 +227,7 @@ async function streamDirectGemini(params: StreamChatParams) {
     history = [],
     images = [],
     enableThinking = false,
-    enableSearch = true,
+    enableSearch = false,
     model = "gemini-3.6-flash",
     systemInstruction,
     customApiKey,
@@ -266,75 +266,12 @@ async function streamDirectGemini(params: StreamChatParams) {
     });
   };
 
-  // Attempt 1: Native Google Search Grounding tool (if search requested)
-  if (enableSearch !== false) {
-    try {
-      const configWithTool: any = {
-        systemInstruction: getRealtimeSystemInstruction(systemInstruction),
-        tools: [{ googleSearch: {} }],
-      };
-      if (enableThinking) {
-        configWithTool.thinkingConfig = { thinkingLevel: ThinkingLevel.HIGH };
-      }
-
-      const stream = await ai.models.generateContentStream({
-        model: targetModel,
-        contents,
-        config: configWithTool,
-      });
-
-      for await (const chunk of stream) {
-        let textChunk = "";
-        let thoughtChunk = "";
-
-        const parts = chunk.candidates?.[0]?.content?.parts;
-        if (parts && Array.isArray(parts)) {
-          for (const part of parts) {
-            if ((part as any).thought) {
-              thoughtChunk += (part as any).text || "";
-            } else if (part.text) {
-              textChunk += part.text;
-            }
-          }
-        }
-        if (!textChunk && !thoughtChunk && chunk.text) {
-          textChunk = chunk.text;
-        }
-
-        const groundingMetadata = chunk.candidates?.[0]?.groundingMetadata;
-        let groundingSources: GroundingChunk[] | undefined;
-        let webSearchQueries: string[] | undefined;
-
-        if (groundingMetadata?.groundingChunks && Array.isArray(groundingMetadata.groundingChunks)) {
-          groundingSources = groundingMetadata.groundingChunks
-            .map((c: any) => ({
-              title: c.web?.title || c.title || "Trang web",
-              uri: c.web?.uri || c.uri || "",
-            }))
-            .filter((s: any) => s.uri);
-        }
-
-        if (groundingMetadata?.webSearchQueries && Array.isArray(groundingMetadata.webSearchQueries)) {
-          webSearchQueries = groundingMetadata.webSearchQueries;
-        }
-
-        handleChunkData(textChunk, thoughtChunk, targetModel, undefined, groundingSources, webSearchQueries);
-      }
-
-      if (totalTextReceived > 0) {
-        return;
-      }
-    } catch (searchToolErr: any) {
-      console.warn("Client native googleSearch failed (quota/rate limit), falling back to live web crawler:", searchToolErr?.message);
-    }
-  }
-
-  // Attempt 2: Live Web Search Fallback + Gemini without search tool (to bypass 429 quota)
+  // Direct Live Web Search + Gemini without the blocked native tool (to avoid 429 quota block completely)
   try {
     let searchContext = "";
     let webSources: GroundingChunk[] = [];
 
-    if (enableSearch !== false && prompt) {
+    if (enableSearch && prompt) {
       const liveResults = await clientFetchLiveWebSearch(prompt);
       if (liveResults.length > 0) {
         webSources = liveResults.map((r) => ({ title: r.title, uri: r.uri }));
@@ -355,13 +292,13 @@ async function streamDirectGemini(params: StreamChatParams) {
       fallbackConfig.thinkingConfig = { thinkingLevel: ThinkingLevel.HIGH };
     }
 
-    const streamFallback = await ai.models.generateContentStream({
+    const stream = await ai.models.generateContentStream({
       model: targetModel,
       contents,
       config: fallbackConfig,
     });
 
-    for await (const chunk of streamFallback) {
+    for await (const chunk of stream) {
       let textChunk = "";
       let thoughtChunk = "";
 
@@ -453,7 +390,7 @@ export async function sendChatMessage(params: StreamChatParams): Promise<void> {
         size: img.size,
       })),
       enableThinking: params.enableThinking,
-      enableSearch: params.enableSearch !== false,
+      enableSearch: Boolean(params.enableSearch),
       model: params.model,
       systemInstruction: params.systemInstruction || undefined,
     };

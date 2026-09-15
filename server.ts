@@ -290,7 +290,7 @@ app.post("/api/gemini/stream", async (req, res) => {
     history = [],
     images = [],
     enableThinking = false,
-    enableSearch = true,
+    enableSearch = false,
     model = "gemini-3.8-flash",
     systemInstruction,
   } = req.body;
@@ -309,17 +309,33 @@ app.post("/api/gemini/stream", async (req, res) => {
   const ai = getAIClient();
   const contents = formatContents(prompt, history, images);
 
-  let requestedModel = model || "gemini-3.8-flash";
-  let targetModel = requestedModel;
+  let targetModel = model || "gemini-3.8-flash";
   let fallbackReason = "";
+  let isWebSearchFallback = false;
+  let fallbackGroundingSources: { title: string; uri: string }[] = [];
+  let fallbackWebSearchQueries: string[] = [];
+
+  let searchContext = "";
+  if (enableSearch && prompt) {
+    try {
+      const searchResults = await fetchLiveWebSearch(prompt);
+      if (searchResults.length > 0) {
+        isWebSearchFallback = true;
+        fallbackGroundingSources = searchResults.map((r) => ({ title: r.title, uri: r.uri }));
+        fallbackWebSearchQueries = [prompt.slice(0, 100)];
+        searchContext = `\n\n[KẾT QUẢ TÌM KIẾM WEB THỜI GIAN THỰC CHO: "${prompt}"]:\n` +
+          searchResults.map((r, i) => `[${i + 1}] Tiêu đề: ${r.title}\nURL: ${r.uri}\nTóm tắt: ${r.snippet}`).join("\n\n") +
+          `\nHãy sử dụng các kết quả tìm kiếm thời gian thực ở trên để trả lời câu hỏi của người dùng một cách chính xác, cập nhật nhất và trích dẫn rõ ràng.`;
+        fallbackReason = "Đã sử dụng công cụ Live Web Search để tra cứu dữ liệu mới nhất trực tuyến.";
+      }
+    } catch (searchErr) {
+      console.warn("Live web search fetch failed:", searchErr);
+    }
+  }
 
   const configPayload: any = {
-    systemInstruction: getRealtimeSystemInstruction(systemInstruction),
+    systemInstruction: getRealtimeSystemInstruction((systemInstruction ? systemInstruction + "\n" : "") + searchContext),
   };
-
-  if (enableSearch) {
-    configPayload.tools = [{ googleSearch: {} }];
-  }
 
   if (enableThinking) {
     configPayload.thinkingConfig = {
@@ -329,9 +345,6 @@ app.post("/api/gemini/stream", async (req, res) => {
 
   let stream: any = null;
   let activeModelUsed = targetModel;
-  let isWebSearchFallback = false;
-  let fallbackGroundingSources: { title: string; uri: string }[] = [];
-  let fallbackWebSearchQueries: string[] = [];
 
   try {
     stream = await ai.models.generateContentStream({
@@ -340,88 +353,12 @@ app.post("/api/gemini/stream", async (req, res) => {
       config: configPayload,
     });
   } catch (initialErr: any) {
-    const errText = initialErr?.message || "";
-    console.warn(`Initial stream attempt failed for model ${targetModel}:`, errText);
-
-    // If search tool or model threw 429, 503, 530 or quota error
-    if (enableSearch) {
-      console.log("Native search grounding encountered rate limit/530. Activating resilient Live Web Search fallback...");
-      try {
-        isWebSearchFallback = true;
-        fallbackWebSearchQueries = [prompt.slice(0, 100)];
-        const searchResults = await fetchLiveWebSearch(prompt);
-        fallbackGroundingSources = searchResults.map((r) => ({ title: r.title, uri: r.uri }));
-
-        let searchContext = "";
-        if (searchResults.length > 0) {
-          searchContext = `\n\n[KẾT QUẢ TÌM KIẾM WEB THỜI GIAN THỰC CHO: "${prompt}"]:\n` +
-            searchResults.map((r, i) => `[${i + 1}] Tiêu đề: ${r.title}\nURL: ${r.uri}\nTóm tắt: ${r.snippet}`).join("\n\n") +
-            `\nHãy sử dụng các kết quả tìm kiếm thời gian thực ở trên để trả lời câu hỏi của người dùng một cách chính xác, cập nhật nhất và trích dẫn rõ ràng.`;
-        }
-
-        const fallbackSystemPrompt = getRealtimeSystemInstruction(systemInstruction) + searchContext;
-        const noToolConfig: any = {
-          systemInstruction: fallbackSystemPrompt,
-        };
-        if (enableThinking) {
-          noToolConfig.thinkingConfig = { thinkingLevel: ThinkingLevel.HIGH };
-        }
-
-        activeModelUsed = "gemini-3.8-flash";
-        fallbackReason = "Đã sử dụng công cụ Live Web Search để tra cứu dữ liệu mới nhất trực tuyến.";
-
-        stream = await ai.models.generateContentStream({
-          model: "gemini-3.8-flash",
-          contents,
-          config: noToolConfig,
-        });
-      } catch (searchFallbackErr: any) {
-        console.error("Live Web Search fallback failed:", searchFallbackErr);
-        // Standard model stream without tools
-        try {
-          const simpleConfig: any = {
-            systemInstruction: getRealtimeSystemInstruction(systemInstruction),
-          };
-          if (enableThinking) {
-            simpleConfig.thinkingConfig = { thinkingLevel: ThinkingLevel.HIGH };
-          }
-          activeModelUsed = "gemini-3.8-flash";
-          stream = await ai.models.generateContentStream({
-            model: "gemini-3.8-flash",
-            contents,
-            config: simpleConfig,
-          });
-        } catch (fatalErr: any) {
-          const cleanMsg = extractErrorMessage(fatalErr);
-          res.write(`data: ${JSON.stringify({ error: cleanMsg })}\n\n`);
-          res.write(`data: [DONE]\n\n`);
-          res.end();
-          return;
-        }
-      }
-    } else {
-      // Non-search fallback
-      try {
-        activeModelUsed = "gemini-3.8-flash";
-        const fallbackConfig: any = {
-          systemInstruction: getRealtimeSystemInstruction(systemInstruction),
-        };
-        if (enableThinking) {
-          fallbackConfig.thinkingConfig = { thinkingLevel: ThinkingLevel.HIGH };
-        }
-        stream = await ai.models.generateContentStream({
-          model: "gemini-3.8-flash",
-          contents,
-          config: fallbackConfig,
-        });
-      } catch (fatalErr: any) {
-        const cleanMsg = extractErrorMessage(fatalErr);
-        res.write(`data: ${JSON.stringify({ error: cleanMsg })}\n\n`);
-        res.write(`data: [DONE]\n\n`);
-        res.end();
-        return;
-      }
-    }
+    console.error("Stream generation error:", initialErr);
+    const cleanMsg = extractErrorMessage(initialErr);
+    res.write(`data: ${JSON.stringify({ error: cleanMsg })}\n\n`);
+    res.write(`data: [DONE]\n\n`);
+    res.end();
+    return;
   }
 
   // Stream output to client
@@ -569,7 +506,7 @@ app.post("/api/gemini/generate", async (req, res) => {
     history = [],
     images = [],
     enableThinking = false,
-    enableSearch = true,
+    enableSearch = false,
     model = "gemini-3.8-flash",
     systemInstruction,
   } = req.body;
@@ -583,13 +520,30 @@ app.post("/api/gemini/generate", async (req, res) => {
     const ai = getAIClient();
 
     let targetModel = model || "gemini-3.8-flash";
-    const configPayload: any = {
-      systemInstruction: getRealtimeSystemInstruction(systemInstruction),
-    };
+    let searchContext = "";
+    let fallbackGroundingSources: { title: string; uri: string }[] = [];
+    let fallbackWebSearchQueries: string[] = [];
+    let fallbackNotice = "";
 
-    if (enableSearch) {
-      configPayload.tools = [{ googleSearch: {} }];
+    if (enableSearch && prompt) {
+      try {
+        const searchResults = await fetchLiveWebSearch(prompt);
+        if (searchResults.length > 0) {
+          fallbackGroundingSources = searchResults.map((r) => ({ title: r.title, uri: r.uri }));
+          fallbackWebSearchQueries = [prompt.slice(0, 100)];
+          searchContext = `\n\n[KẾT QUẢ TÌM KIẾM WEB THỜI GIAN THỰC CHO: "${prompt}"]:\n` +
+            searchResults.map((r, i) => `[${i + 1}] ${r.title} (${r.uri})\n${r.snippet}`).join("\n\n") +
+            `\nHãy sử dụng các kết quả tìm kiếm mới nhất này để trả lời đầy đủ, chi tiết cho người dùng.`;
+          fallbackNotice = "Đã tra cứu dữ liệu web thời gian thực trực tuyến.";
+        }
+      } catch (e) {
+        console.warn("Live web search fetch failed in generate:", e);
+      }
     }
+
+    const configPayload: any = {
+      systemInstruction: getRealtimeSystemInstruction((systemInstruction ? systemInstruction + "\n" : "") + searchContext),
+    };
 
     if (enableThinking) {
       configPayload.thinkingConfig = {
@@ -599,10 +553,7 @@ app.post("/api/gemini/generate", async (req, res) => {
 
     const contents = formatContents(prompt, history, images);
     let activeModel = targetModel;
-    let fallbackNotice = "";
     let response: any = null;
-    let fallbackGroundingSources: { title: string; uri: string }[] = [];
-    let fallbackWebSearchQueries: string[] = [];
 
     try {
       response = await ai.models.generateContent({
@@ -611,65 +562,19 @@ app.post("/api/gemini/generate", async (req, res) => {
         config: configPayload,
       });
     } catch (initialErr: any) {
-      const errText = initialErr?.message || "";
-      console.warn(`Initial generateContent failed for ${targetModel}:`, errText);
-
-      if (enableSearch) {
-        try {
-          const searchResults = await fetchLiveWebSearch(prompt);
-          fallbackGroundingSources = searchResults.map((r) => ({ title: r.title, uri: r.uri }));
-          fallbackWebSearchQueries = [prompt.slice(0, 100)];
-
-          let searchContext = "";
-          if (searchResults.length > 0) {
-            searchContext = `\n\n[KẾT QUẢ TÌM KIẾM WEB THỜI GIAN THỰC CHO: "${prompt}"]:\n` +
-              searchResults.map((r, i) => `[${i + 1}] ${r.title} (${r.uri})\n${r.snippet}`).join("\n\n") +
-              `\nHãy sử dụng các kết quả tìm kiếm mới nhất này để trả lời đầy đủ, chi tiết cho người dùng.`;
-          }
-
-          const fallbackConfig: any = {
-            systemInstruction: getRealtimeSystemInstruction(systemInstruction) + searchContext,
-          };
-          if (enableThinking) {
-            fallbackConfig.thinkingConfig = { thinkingLevel: ThinkingLevel.HIGH };
-          }
-
-          activeModel = "gemini-3.8-flash";
-          fallbackNotice = "Đã tra cứu dữ liệu web thời gian thực trực tuyến.";
-          response = await ai.models.generateContent({
-            model: "gemini-3.8-flash",
-            contents,
-            config: fallbackConfig,
-          });
-        } catch (searchErr) {
-          console.error("Generate Live Search fallback failed:", searchErr);
-          const simpleConfig: any = {
-            systemInstruction: getRealtimeSystemInstruction(systemInstruction),
-          };
-          if (enableThinking) {
-            simpleConfig.thinkingConfig = { thinkingLevel: ThinkingLevel.HIGH };
-          }
-          activeModel = "gemini-3.8-flash";
-          response = await ai.models.generateContent({
-            model: "gemini-3.8-flash",
-            contents,
-            config: simpleConfig,
-          });
-        }
-      } else {
-        const fallbackConfig: any = {
-          systemInstruction: getRealtimeSystemInstruction(systemInstruction),
-        };
-        if (enableThinking) {
-          fallbackConfig.thinkingConfig = { thinkingLevel: ThinkingLevel.HIGH };
-        }
-        activeModel = "gemini-3.8-flash";
-        response = await ai.models.generateContent({
-          model: "gemini-3.8-flash",
-          contents,
-          config: fallbackConfig,
-        });
+      console.warn(`GenerateContent error with model ${targetModel}, retrying simple config:`, initialErr?.message);
+      const simpleConfig: any = {
+        systemInstruction: getRealtimeSystemInstruction(systemInstruction),
+      };
+      if (enableThinking) {
+        simpleConfig.thinkingConfig = { thinkingLevel: ThinkingLevel.HIGH };
       }
+      activeModel = "gemini-3.8-flash";
+      response = await ai.models.generateContent({
+        model: "gemini-3.8-flash",
+        contents,
+        config: simpleConfig,
+      });
     }
 
     let mainText = "";
