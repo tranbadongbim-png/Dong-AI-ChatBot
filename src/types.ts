@@ -28,6 +28,7 @@ export interface ChatSession {
   model: string;
   enableThinking: boolean;
   systemInstruction?: string;
+  userId?: string;
 }
 
 export interface PresetPrompt {
@@ -39,4 +40,13 @@ export interface PresetPrompt {
   enableThinking: boolean;
   model: "gemini-3.6-flash";
   iconName: string;
+}
+
+export interface GoogleUser {
+  id: string;
+  name: string;
+  email: string;
+  picture?: string;
+  token?: string;
+  isGoogleAccount?: boolean;
 }

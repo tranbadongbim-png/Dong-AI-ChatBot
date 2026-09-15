@@ -5,13 +5,15 @@ import { MessageItem } from "./components/MessageItem";
 import { ChatInput } from "./components/ChatInput";
 import { EmptyState } from "./components/EmptyState";
 import { SettingsModal } from "./components/SettingsModal";
-import { ChatImage, ChatMessage, ChatSession, PresetPrompt } from "./types";
+import { GoogleAuthModal } from "./components/GoogleAuthModal";
+import { ChatImage, ChatMessage, ChatSession, PresetPrompt, GoogleUser } from "./types";
 import { sendChatMessage } from "./services/geminiClient";
 
-const STORAGE_KEY = "gemini_36_sessions_v1";
+const STORAGE_KEY_PREFIX = "gemini_36_sessions_";
+const CURRENT_USER_KEY = "gemini_current_user_v1";
 const API_KEY_STORAGE = "gemini_custom_api_key_v1";
 
-function createNewSession(enableThinking: boolean, model: string): ChatSession {
+function createNewSession(enableThinking: boolean, model: string, userId?: string): ChatSession {
   return {
     id: "session_" + Date.now().toString(36),
     title: "Đoạn chat mới",
@@ -20,13 +22,40 @@ function createNewSession(enableThinking: boolean, model: string): ChatSession {
     updatedAt: Date.now(),
     model: model || "gemini-3.6-flash",
     enableThinking,
+    userId,
   };
 }
 
 export default function App() {
+  // Current User (Google Account)
+  const [currentUser, setCurrentUser] = useState<GoogleUser | null>(() => {
+    try {
+      const savedUser = localStorage.getItem(CURRENT_USER_KEY);
+      if (savedUser) return JSON.parse(savedUser);
+    } catch (e) {
+      console.error("Failed to load user", e);
+    }
+    return null;
+  });
+
+  const getStorageKey = (user: GoogleUser | null) => {
+    return user ? `${STORAGE_KEY_PREFIX}${user.id}` : `${STORAGE_KEY_PREFIX}guest`;
+  };
+
   const [sessions, setSessions] = useState<ChatSession[]>(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
+      const initialUser = (() => {
+        try {
+          const s = localStorage.getItem(CURRENT_USER_KEY);
+          return s ? JSON.parse(s) : null;
+        } catch {
+          return null;
+        }
+      })();
+      const key = initialUser
+        ? `${STORAGE_KEY_PREFIX}${initialUser.id}`
+        : `${STORAGE_KEY_PREFIX}guest`;
+      const saved = localStorage.getItem(key) || localStorage.getItem("gemini_36_sessions_v1");
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
@@ -54,6 +83,7 @@ export default function App() {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+  const [isGoogleAuthOpen, setIsGoogleAuthOpen] = useState<boolean>(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -63,14 +93,61 @@ export default function App() {
     sessions.find((s) => s.id === activeSessionId) || sessions[0];
   const messages = activeSession ? activeSession.messages : [];
 
-  // Persist sessions
+  // Persist sessions for the active user key
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
+      const key = getStorageKey(currentUser);
+      localStorage.setItem(key, JSON.stringify(sessions));
     } catch (e) {
       console.error("Failed to save sessions", e);
     }
-  }, [sessions]);
+  }, [sessions, currentUser]);
+
+  // Persist current user
+  const handleLogin = (user: GoogleUser) => {
+    setCurrentUser(user);
+    try {
+      localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
+      const key = `${STORAGE_KEY_PREFIX}${user.id}`;
+      const saved = localStorage.getItem(key);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setSessions(parsed);
+          setActiveSessionId(parsed[0].id);
+          return;
+        }
+      }
+      // If no prior session for this user, keep current or make fresh
+      const fresh = createNewSession(enableThinking, selectedModel, user.id);
+      setSessions([fresh]);
+      setActiveSessionId(fresh.id);
+    } catch (e) {
+      console.error("Failed to login", e);
+    }
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    try {
+      localStorage.removeItem(CURRENT_USER_KEY);
+      const guestKey = `${STORAGE_KEY_PREFIX}guest`;
+      const saved = localStorage.getItem(guestKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setSessions(parsed);
+          setActiveSessionId(parsed[0].id);
+          return;
+        }
+      }
+      const fresh = createNewSession(enableThinking, selectedModel);
+      setSessions([fresh]);
+      setActiveSessionId(fresh.id);
+    } catch (e) {
+      console.error("Failed to logout", e);
+    }
+  };
 
   // Scroll to bottom
   const scrollToBottom = (smooth = true) => {
@@ -254,7 +331,7 @@ export default function App() {
   };
 
   const handleNewSession = () => {
-    const newSess = createNewSession(enableThinking, selectedModel);
+    const newSess = createNewSession(enableThinking, selectedModel, currentUser?.id);
     setSessions((prev) => [newSess, ...prev]);
     setActiveSessionId(newSess.id);
   };
@@ -264,7 +341,7 @@ export default function App() {
     setSessions((prev) => {
       const filtered = prev.filter((s) => s.id !== id);
       if (filtered.length === 0) {
-        const fresh = createNewSession(enableThinking, selectedModel);
+        const fresh = createNewSession(enableThinking, selectedModel, currentUser?.id);
         setActiveSessionId(fresh.id);
         return [fresh];
       }
@@ -273,6 +350,21 @@ export default function App() {
       }
       return filtered;
     });
+  };
+
+  const handleRenameSession = (id: string, newTitle: string) => {
+    if (!newTitle.trim()) return;
+    setSessions((prev) =>
+      prev.map((s) =>
+        s.id === id
+          ? {
+              ...s,
+              title: newTitle.trim(),
+              updatedAt: Date.now(),
+            }
+          : s
+      )
+    );
   };
 
   const handleClearCurrentChat = () => {
@@ -293,7 +385,6 @@ export default function App() {
 
   const handleRegenerateLast = () => {
     if (messages.length < 2) return;
-    // Find last user message
     let lastUserMsg: ChatMessage | null = null;
     for (let i = messages.length - 1; i >= 0; i--) {
       if (messages[i].role === "user") {
@@ -317,6 +408,7 @@ export default function App() {
         onSelectSession={setActiveSessionId}
         onNewSession={handleNewSession}
         onDeleteSession={handleDeleteSession}
+        onRenameSession={handleRenameSession}
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
         enableThinking={enableThinking}
@@ -324,7 +416,7 @@ export default function App() {
       />
 
       {/* Main Chat Area */}
-      <div className="flex flex-1 flex-col overflow-hidden bg-white">
+      <div className="flex flex-1 flex-col overflow-hidden bg-white min-w-0">
         {/* Top Header */}
         <Header
           enableThinking={enableThinking}
@@ -337,12 +429,14 @@ export default function App() {
           onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
           hasMessages={messages.length > 0}
           hasApiKey={Boolean(customApiKey && customApiKey.trim())}
+          currentUser={currentUser}
+          onOpenGoogleAuth={() => setIsGoogleAuthOpen(true)}
         />
 
         {/* Messages List / Empty State */}
         <main
           id="chat-messages-container"
-          className="flex-1 overflow-y-auto px-4 py-6 scroll-smooth"
+          className="flex-1 overflow-y-auto px-3 sm:px-4 py-4 sm:py-6 scroll-smooth min-h-0"
         >
           {messages.length === 0 ? (
             <EmptyState
@@ -379,7 +473,7 @@ export default function App() {
         />
       </div>
 
-      {/* Settings Modal */}
+      {/* Settings Modal (Custom API Key & System Instruction) */}
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
@@ -398,6 +492,15 @@ export default function App() {
             console.error("Failed to persist API key", e);
           }
         }}
+      />
+
+      {/* Google Authentication Modal */}
+      <GoogleAuthModal
+        isOpen={isGoogleAuthOpen}
+        onClose={() => setIsGoogleAuthOpen(false)}
+        currentUser={currentUser}
+        onLogin={handleLogin}
+        onLogout={handleLogout}
       />
     </div>
   );
