@@ -2,6 +2,16 @@ import { PresetPrompt } from "../types";
 
 export const PRESET_PROMPTS: PresetPrompt[] = [
   {
+    id: "csharp-revit-addin",
+    category: "Lập Trình C# Revit Add-in",
+    title: "Viết C# Add-in .NET 8 & Ribbon UI",
+    description: "Tạo PushButton, IExternalCommand, Ribbon Panel, Icon Resource & Avoid Clash / Wye 45",
+    prompt: "Hãy đóng vai Chuyên gia Lập trình C# Revit API Add-in (.NET 8.0 / .NET Framework 4.8). Viết mã nguồn C# hoàn chỉnh tạo một Ribbon Tab 'MEP OWN TOOLS' chứa Ribbon Panel và PushButton kích hoạt một IExternalCommand bẻ co tránh va chạm 3D (Avoid Clash). Nhúng icon PNG 32x32 qua ImageUtils, xử lý Transaction, UnitUtils 304.8 mm và IFailuresPreprocessor (WarningSwallower).",
+    enableThinking: false,
+    model: "csharp-revit-pro",
+    iconName: "Code2",
+  },
+  {
     id: "pyrevit-code-specialist",
     category: "Lập Trình pyRevit & Revit API",
     title: "Viết Script pyRevit & Tự động hóa Revit",

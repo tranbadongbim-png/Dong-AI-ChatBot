@@ -326,38 +326,22 @@ export const PyRevitContextModal: React.FC<PyRevitContextModalProps> = ({
             )}
           </div>
 
-          {/* Section 2: Local File Upload & Manual snippet */}
+          {/* Section 2: Documents & Manual snippet */}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <BookOpen className="h-4 w-4 text-amber-600" />
               <h4 className="text-sm font-bold text-slate-900">
-                Danh sách Tài liệu &amp; Mã nguồn đã nạp ({documents.length} tệp)
+                Danh sách Tài liệu &amp; Mã nguồn trong Kho tri thức ({documents.length} tệp)
               </h4>
             </div>
 
             <div className="flex items-center gap-2">
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                accept=".py,.txt,.md,.json,.xaml,.csv,.xml,.cs"
-                onChange={handleFileUpload}
-                className="hidden"
-              />
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-xs hover:bg-slate-50 transition-colors"
-              >
-                <Upload className="h-3.5 w-3.5 text-slate-600" />
-                <span>Tải tệp từ máy tính (.py, .txt)</span>
-              </button>
-
               <button
                 onClick={() => setIsAddingManual(true)}
                 className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-xs hover:bg-slate-50 transition-colors"
               >
                 <Plus className="h-3.5 w-3.5 text-blue-600" />
-                <span>Thêm đoạn mã thủ công</span>
+                <span>Thêm đoạn mã / quy chuẩn thủ công</span>
               </button>
             </div>
           </div>

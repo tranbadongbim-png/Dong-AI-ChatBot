@@ -35,7 +35,7 @@ export const Header: React.FC<HeaderProps> = ({
   currentUser,
   onOpenGoogleAuth,
 }) => {
-  const isPyRevitSelected = selectedModel === "pyrevit-code-pro" || selectedModel === "pyrevit-code-specialist";
+  const isPyRevitSelected = selectedModel === "pyrevit-code-pro" || selectedModel === "pyrevit-code-specialist" || selectedModel === "csharp-revit-pro" || selectedModel === "csharp-revit-coder";
   return (
     <header
       id="app-header"
@@ -81,11 +81,12 @@ export const Header: React.FC<HeaderProps> = ({
             id="select-model-dropdown"
             value={selectedModel}
             onChange={(e) => onSelectModel(e.target.value)}
-            className="bg-transparent text-xs font-semibold text-slate-800 focus:outline-none cursor-pointer pr-1 w-auto max-w-[130px] sm:max-w-[155px] truncate"
+            className="bg-transparent text-xs font-semibold text-slate-800 focus:outline-none cursor-pointer pr-1 w-auto max-w-[130px] sm:max-w-[170px] truncate"
             title="Chọn model Gemini"
           >
             <option value="gemini-3.6-flash">Gemini 3.6 Flash (Mặc định)</option>
-            <option value="pyrevit-code-pro">⚡ pyRevit Pro Coder (Free • Chuyên Revit API)</option>
+            <option value="pyrevit-code-pro">⚡ pyRevit Pro Coder (Free • Python)</option>
+            <option value="csharp-revit-pro">🔷 C# Revit Add-in Pro (Free • .NET C#)</option>
             <option value="gemini-3.5-flash-lite">Gemini 3.5 Flash Lite (Cực nhanh)</option>
             <option value="gemini-3.1-flash-lite">Gemini Flash Lite (Bền bỉ)</option>
             <option value="gemini-3.5-flash">Gemini 3.5 Flash (Cân bằng)</option>

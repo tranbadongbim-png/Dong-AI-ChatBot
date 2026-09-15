@@ -256,6 +256,34 @@ app = revit.app
 - Cung cấp code Python hoàn chỉnh, chú thích tiếng Việt rõ ràng, giải thích cách triển khai trong extension.
 `;
 
+const CSHARP_SPECIALIST_INSTRUCTION = `
+Bạn là Chuyên gia Lập trình C# Autodesk Revit API Add-in hàng đầu (Senior Revit API C# Developer & BIM Automation Specialist).
+Mô hình chuyên dụng này được tối ưu hóa cho việc lập trình C# Add-in (.NET 8.0 / .NET Framework 4.8), WPF MVVM, tạo Ribbon UI, và xử lý các thuật toán Revit API MEP phức tạp.
+
+Các nguyên tắc bắt buộc khi viết mã C# Revit Add-in:
+1. Cấu trúc Command chuẩn (IExternalCommand):
+   [Transaction(TransactionMode.Manual)]
+   [Regeneration(RegenerationOption.Manual)]
+   public class MyCommand : IExternalCommand {
+       public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements) { ... }
+   }
+
+2. Cấu trúc UI Ribbon & Icon (IExternalApplication & AppUI.cs):
+   - Tạo RibbonTab, RibbonPanel, và PushButtonData với LargeImage (32x32) & Image (16x16) từ Resource BitmapImage.
+   - Nhúng icon PNG 32-bit dưới dạng Resource (Build Action: Resource / EmbeddedResource).
+   - Tham khảo 3 tài liệu C# kiến thức dự án (CSHARP_Ribbon_Icon_Guide.md, CSHARP_Revit_API_Playbook.md, CSHARP_MEP_OWN_TOOLS_Suite.md) để tích hợp Icon, Wye 45, WarningSwallower và MVVM.
+
+3. Quản lý Revit API & MEP Piping:
+   - Chuyển đổi đơn vị chính xác qua UnitUtils hoặc 304.8 mm/feet (1 ft = 304.8 mm).
+   - Xử lý ConnectorManager, tính khoảng lùi Offset L = Diameter * factor + ExtraGap cho Wye 45°.
+   - Luôn gọi doc.Regenerate() sau khi BreakCurve hoặc chèn Fitting trước khi lấy Connector.
+   - Bọc các thay đổi DB trong Transaction.
+   - Tự động bỏ qua warning không cần thiết với IFailuresPreprocessor (WarningSwallower).
+
+4. Phong cách phản hồi:
+   - Cung cấp code C# hoàn chỉnh, cấu trúc class rõ ràng, namespace ngắn gọn, kèm chú thích tiếng Việt và hướng dẫn đặt file trong giải pháp Visual Studio / Rider.
+`;
+
 // Client-side direct Google Gemini SDK (for Cloudflare Pages / Static Hosting)
 async function streamDirectGemini(params: StreamChatParams) {
   const {
@@ -277,15 +305,16 @@ async function streamDirectGemini(params: StreamChatParams) {
   const ai = new GoogleGenAI({ apiKey: customApiKey });
   const contents = formatSdkContents(prompt, history, images);
   const isPyRevitModel = model === "pyrevit-code-pro" || model === "pyrevit-code-specialist";
+  const isCSharpModel = model === "csharp-revit-pro" || model === "csharp-revit-coder";
   const preferredModel = model === "gemini-flash-lite-latest" ? "gemini-3.1-flash-lite" : (model || "gemini-3.6-flash");
   
   // Khi bật High Thinking: ưu tiên gemini-3.8-flash, nếu fail thì gọi gemini-3.6-flash, không hạ thêm model
-  // Khi chọn pyRevit: dùng các model coding cực nhanh, miễn phí, không giới hạn
+  // Khi chọn pyRevit hoặc C#: dùng các model coding cực nhanh, miễn phí, không giới hạn
   // Khi High Thinking tắt: mặc định gemini-3.6-flash, nếu fail thì tự động chuyển sang Flash Lite để luôn có phản hồi!
   let candidateModels: string[];
   if (enableThinking) {
     candidateModels = ["gemini-3.8-flash", "gemini-3.6-flash"];
-  } else if (isPyRevitModel) {
+  } else if (isPyRevitModel || isCSharpModel) {
     candidateModels = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.5-flash"];
   } else {
     candidateModels = [
@@ -313,7 +342,7 @@ async function streamDirectGemini(params: StreamChatParams) {
     onChunk({
       text: textChunk,
       thought: thoughtChunk,
-      model: isPyRevitModel ? "pyrevit-code-pro" : activeModel,
+      model: isCSharpModel ? "csharp-revit-pro" : (isPyRevitModel ? "pyrevit-code-pro" : activeModel),
       fallbackReason,
       groundingSources,
       webSearchQueries,
@@ -335,7 +364,10 @@ async function streamDirectGemini(params: StreamChatParams) {
       }
     }
 
-    const baseInstruction = (systemInstruction ? systemInstruction + "\n" : "") + (isPyRevitModel ? PYREVIT_SPECIALIST_INSTRUCTION + "\n" : "") + searchContext;
+    const baseInstruction =
+      (systemInstruction ? systemInstruction + "\n" : "") +
+      (isCSharpModel ? CSHARP_SPECIALIST_INSTRUCTION + "\n" : (isPyRevitModel ? PYREVIT_SPECIALIST_INSTRUCTION + "\n" : "")) +
+      searchContext;
     const fallbackInstruction = getRealtimeSystemInstruction(baseInstruction);
 
     const fallbackConfig: any = {

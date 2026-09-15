@@ -136,6 +136,9 @@ export default function App() {
         const validModels = [
           "gemini-3.6-flash",
           "pyrevit-code-pro",
+          "pyrevit-code-specialist",
+          "csharp-revit-pro",
+          "csharp-revit-coder",
           "gemini-3.5-flash-lite",
           "gemini-3.1-flash-lite",
           "gemini-3.5-flash",
