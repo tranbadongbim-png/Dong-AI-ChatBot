@@ -344,7 +344,7 @@ app = revit.app
 - Cung cấp code Python hoàn chỉnh, có chú thích tiếng Việt rõ ràng, kèm hướng dẫn đặt vị trí file trong cấu trúc extension (.extension/.tab/.panel/.pushbutton/script.py).
 `;
 
-// Helper to format knowledge base documents for pyRevit Coder
+// Helper to format knowledge base documents for pyRevit Coder & Gemini
 function buildPyRevitKnowledgeContext(pyRevitContext: any): string {
   if (!pyRevitContext) return "";
   const activeDocs = (pyRevitContext.documents || []).filter(
@@ -352,16 +352,23 @@ function buildPyRevitKnowledgeContext(pyRevitContext: any): string {
   );
   const customRules = pyRevitContext.customGuidelines?.trim() || "";
 
-  if (activeDocs.length === 0 && !customRules) return "";
+  if (activeDocs.length === 0 && !customRules) {
+    return `\n\n[TRẠNG THÁI KHO TRI THỨC]: Hiện tại người dùng chưa nạp tệp nào vào kho tri thức (hoặc tất cả tệp đang ở trạng thái tắt). Nếu người dùng hỏi về file trong kho kiến thức, hãy nhắc người dùng mở cửa sổ "Kho tri thức pyRevit" (+Drive) trên thanh công cụ để nạp tệp .py/.txt từ máy tính hoặc dán link Google Drive.\n`;
+  }
+
+  const fileListNames = activeDocs.map((d: any) => d.name || "Tài liệu").join(", ");
 
   let contextBlock = `\n\n================================================================================
-[KHO TRI THỨC, TÀI LIỆU & MÃ NGUỒN DỰ ÁN PYREVIT BẮT BUỘC ĐỌC VÀ TUÂN THỦ]
-Dưới đây là tài liệu dự án, cấu trúc module, hàm helper và quy chuẩn tool pyRevit được trích xuất từ Google Drive / Kho tri thức của người dùng.
+[KHO TRI THỨC, TÀI LIỆU & MÃ NGUỒN DỰ ÁN DÀNH CHO AI - BẮT BUỘC ĐỌC VÀ TUÂN THỦ]
+XÁC NHẬN HỆ THỐNG: Toàn bộ ${activeDocs.length} tệp tài liệu và mã nguồn dưới đây ĐÃ ĐƯỢC TỰ ĐỘNG NẠP TRỰC TIẾP VÀO CONTEXT BỘ NHỚ CỦA BẠN.
 
-YÊU CẦU BẮT BUỘC ĐỐI VỚI PYREVIT CODER:
-1. Bạn PHẢI đọc kỹ và nắm vững toàn bộ các file, module, hàm (functions), lớp (classes) và cấu trúc trong kho tài liệu này trước khi sinh code.
-2. Code pyRevit bạn tạo ra PHẢI tương thích, đồng bộ và tái sử dụng chính xác các hàm/module đã được định nghĩa trong các file dự án này.
-3. Tuyệt đối tuân thủ các quy tắc đặt tên, xử lý Transaction và cấu trúc thư mục quy định trong tài liệu.
+QUY TẮC BẮT BUỘC KHI PHẢN HỒI:
+1. Khi người dùng hỏi: "Mày có đọc được file trong kho kiến thức không?", "Bạn có đọc được file kho tri thức không?" hoặc tương tự:
+   -> BẠN PHẢI TRẢ LỜI NGAY: "Có, tôi đã đọc và nắm vững tất cả ${activeDocs.length} tệp trong Kho tri thức của bạn!"
+   -> Liệt kê rõ danh sách tên các tệp bạn đang giữ trong context: ${fileListNames}.
+   -> Tóm tắt ngắn gọn nội dung/chức năng chính của từng tệp nếu người dùng yêu cầu.
+2. TUYỆT ĐỐI KHÔNG ĐƯỢC trả lời "tôi không trực tiếp truy cập vào ổ cứng cục bộ" hay yêu cầu người dùng dán lại code vào khung chat. Bởi vì toàn bộ nội dung file đã được nạp sẵn ở ngay bên dưới.
+3. Khi lập trình pyRevit hay viết tool, bạn PHẢI áp dụng và tái sử dụng các hàm helper, quy chuẩn, cấu trúc class trong các tệp kho tri thức này.
 `;
 
   if (customRules) {
@@ -369,12 +376,12 @@ YÊU CẦU BẮT BUỘC ĐỐI VỚI PYREVIT CODER:
   }
 
   if (activeDocs.length > 0) {
-    contextBlock += `\n[DANH SÁCH TÀI LIỆU & MÃ NGUỒN ĐÃ NẠP (${activeDocs.length} tệp)]:\n`;
+    contextBlock += `\n[NỘI DUNG CHI TIẾT CÁC TỆP TRONG KHO TRI THỨC (${activeDocs.length} TỆP)]:\n`;
     activeDocs.forEach((doc: any, index: number) => {
       const docName = doc.name || `Tài liệu ${index + 1}`;
       const docType = doc.type || "file";
-      const truncatedContent = doc.content.length > 80000 ? doc.content.slice(0, 80000) + "\n...[Đã rút gọn vì dung lượng lớn]..." : doc.content;
-      contextBlock += `\n--- [BẮT ĐẦU TỆP ${index + 1}/${activeDocs.length}: ${docName} (Dạng: ${docType})] ---\n${truncatedContent}\n--- [HẾT TỆP ${index + 1}: ${docName}] ---\n`;
+      const truncatedContent = doc.content.length > 100000 ? doc.content.slice(0, 100000) + "\n...[Đã rút gọn vì nội dung lớn]..." : doc.content;
+      contextBlock += `\n--- [TỆP ${index + 1}/${activeDocs.length}: ${docName} (Định dạng: .${docType})] ---\n${truncatedContent}\n--- [HẾT TỆP ${index + 1}: ${docName}] ---\n`;
     });
   }
 
@@ -810,7 +817,7 @@ app.post("/api/gemini/stream", async (req, res) => {
   }
 
   const isPyRevitModel = model === "pyrevit-code-pro" || model === "pyrevit-code-specialist";
-  const pyRevitKnowledge = isPyRevitModel ? buildPyRevitKnowledgeContext(pyRevitContext) : "";
+  const pyRevitKnowledge = buildPyRevitKnowledgeContext(pyRevitContext);
   const baseInstruction =
     (systemInstruction ? systemInstruction + "\n" : "") +
     (isPyRevitModel ? PYREVIT_SPECIALIST_INSTRUCTION + "\n" : "") +
